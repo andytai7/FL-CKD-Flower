@@ -1,0 +1,106 @@
+"""Data loading + preprocessing for the synthetic CKD dataset.
+
+Source of truth for the *real* data is `extract_features.sql`; this loader handles the
+synthetic stand-in `synthetic_ckd_data.csv` (10-feature schema) and applies the missingness
+rules documented in CLAUDE.md §3:
+
+- Binary diagnostic flags (`dx_*`)  -> structural zero (absent == not documented). No imputation.
+- `years_since_*`                   -> 0 encodes "diagnosis absent" (paired with its dx_ flag).
+- Continuous labs (eGFR/HbA1c, real data only) -> median impute + a binary missing-indicator.
+
+When the canonical SQL schema replaces the synthetic one, extend CONTINUOUS_LAB_COLS and the
+missing-indicator logic below; the public API (`load_xy`) stays the same.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+# Synthetic schema (matches synthetic_ckd_data.csv / the original client.py FEATURE_COLS).
+BINARY_FLAG_COLS = [
+    "dx_hypertonie",
+    "dx_diabetes",
+    "dx_khk",
+    "dx_adipositas",
+    "dx_herzinsuffizienz",
+    "dx_hyperurikaemie",
+]
+YEARS_SINCE_COLS = [
+    "years_since_hypertonie_dx",
+    "years_since_diabetes_dx",
+    "years_since_khk_dx",
+]
+CONTINUOUS_COLS = ["age_years", *YEARS_SINCE_COLS]
+
+# Continuous lab columns exist only in the real (extract_features.sql) schema; empty for synthetic.
+CONTINUOUS_LAB_COLS: list[str] = []
+
+FEATURE_COLS = ["age_years", *BINARY_FLAG_COLS, *YEARS_SINCE_COLS]
+LABEL_COL = "ckd_stage3plus"
+
+NUM_FEATURES = len(FEATURE_COLS)  # 10 for the synthetic schema
+
+# The synthetic CSV may live in data/ (current) or the repo root (legacy) — accept either.
+_HERE = Path(__file__).resolve().parent
+_CSV_CANDIDATES = [_HERE / "synthetic_ckd_data.csv", _HERE.parent / "synthetic_ckd_data.csv"]
+DEFAULT_CSV = next((p for p in _CSV_CANDIDATES if p.exists()), _CSV_CANDIDATES[0])
+
+# Per-clinic datasets written by `ckd-clinics` (data/synthesize.py) — the natural, non-simulated
+# federation: one CSV per practice, each a stand-in for that clinic's extract_features.sql output.
+CLINICS_DIR = _HERE / "clinics"
+
+
+def load_dataframe(csv_path: str | Path | None = None) -> pd.DataFrame:
+    """Load the CKD CSV and validate the expected columns are present."""
+    path = Path(csv_path) if csv_path is not None else DEFAULT_CSV
+    df = pd.read_csv(path)
+    missing = [c for c in FEATURE_COLS + [LABEL_COL] if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing expected columns in {path}: {missing}")
+    return df
+
+
+def list_clinic_files(clinics_dir: str | Path | None = None) -> list[Path]:
+    """Sorted per-clinic CSVs in `clinics_dir` (default data/clinics/); excludes all_clinics.csv."""
+    directory = Path(clinics_dir) if clinics_dir is not None else CLINICS_DIR
+    return sorted(directory.glob("clinic_*.csv"))
+
+
+def load_clinic_frames(clinics_dir: str | Path | None = None) -> list[pd.DataFrame]:
+    """Load every on-disk clinic as its own DataFrame — one natural practice per clinic."""
+    files = list_clinic_files(clinics_dir)
+    if not files:
+        where = clinics_dir if clinics_dir is not None else CLINICS_DIR
+        raise FileNotFoundError(
+            f"No clinic CSVs found in {where}. Generate them first:  uv run ckd-clinics"
+        )
+    return [load_dataframe(path) for path in files]
+
+
+def to_xy(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Convert a (possibly per-practice) dataframe to model-ready (X, y) arrays.
+
+    Applies the missingness rules: structural zero for flags / years_since; median + indicator
+    for any continuous lab columns (none in the synthetic schema, hook left for real data).
+    """
+    df = df.copy()
+
+    # Structural zeros: an absent flag or years_since means "not documented" -> 0.
+    df[BINARY_FLAG_COLS] = df[BINARY_FLAG_COLS].fillna(0)
+    df[YEARS_SINCE_COLS] = df[YEARS_SINCE_COLS].fillna(0)
+
+    feature_frames = [df[FEATURE_COLS].astype("float32")]
+
+    # Continuous labs (real data): median impute + binary missing-indicator (informative NaN).
+    for col in CONTINUOUS_LAB_COLS:
+        indicator = df[col].isna().astype("float32")
+        imputed = df[col].fillna(df[col].median()).astype("float32")
+        feature_frames.append(imputed.rename(col).to_frame())
+        feature_frames.append(indicator.rename(f"{col}__missing").to_frame())
+
+    X = pd.concat(feature_frames, axis=1).to_numpy(dtype="float32")
+    y = df[LABEL_COL].to_numpy(dtype="int64")
+    return X, y
