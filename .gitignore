@@ -6,11 +6,6 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 
-# Flower
-claude.md
-
 # OS
 .DS_Store
 
-# Large reference docs (kept locally, excluded from the Flower App bundle)
-*.pdf
