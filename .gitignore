@@ -6,6 +6,10 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 
+# Generated per-clinic datasets — regenerate with `uv run ckd-clinics`, never committed.
+data/clinics/
+
 # OS
 .DS_Store
 
+results/

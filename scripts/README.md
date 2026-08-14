@@ -11,7 +11,6 @@ each `cd`s to the repo root first. The [Makefile](../Makefile) targets just call
 | `./scripts/simulate.sh` | Federated simulation (logreg, non-IID) | `make simulate` |
 | `./scripts/notebook.sh` | Re-run the exploration notebook headless | `make notebook` |
 | `./scripts/lab.sh` | Open the notebook in JupyterLab | `make lab` |
-| `./scripts/test.sh` | Run the test suite | `make test` |
 | `./scripts/lint.sh` | Lint with ruff | `make lint` |
 | `./scripts/clean.sh` | Remove caches + `.DS_Store` | `make clean` |
 

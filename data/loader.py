@@ -19,7 +19,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# Synthetic schema (matches synthetic_ckd_data.csv / the original client.py FEATURE_COLS).
+# Synthetic schema (matches synthetic_ckd_data.csv). This is the 10-feature stand-in schema, NOT
+# the canonical real-data contract in extract_features.sql — see CLAUDE.md §3 for the divergence.
 BINARY_FLAG_COLS = [
     "dx_hypertonie",
     "dx_diabetes",
@@ -43,10 +44,8 @@ LABEL_COL = "ckd_stage3plus"
 
 NUM_FEATURES = len(FEATURE_COLS)  # 10 for the synthetic schema
 
-# The synthetic CSV may live in data/ (current) or the repo root (legacy) — accept either.
 _HERE = Path(__file__).resolve().parent
-_CSV_CANDIDATES = [_HERE / "synthetic_ckd_data.csv", _HERE.parent / "synthetic_ckd_data.csv"]
-DEFAULT_CSV = next((p for p in _CSV_CANDIDATES if p.exists()), _CSV_CANDIDATES[0])
+DEFAULT_CSV = _HERE / "synthetic_ckd_data.csv"
 
 # Per-clinic datasets written by `ckd-clinics` (data/synthesize.py) — the natural, non-simulated
 # federation: one CSV per practice, each a stand-in for that clinic's extract_features.sql output.

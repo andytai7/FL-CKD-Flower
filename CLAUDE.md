@@ -1,44 +1,42 @@
-# CLAUDE.md — FLIP-IT CKD Federated Learning (Pre-Kickoff Baseline Sandbox)
+# CLAUDE.md — FLIP-IT CKD Federated Learning (pre-kickoff baseline sandbox)
 
-> Project memory + onboarding guide + pre-kickoff baseline modeling strategy.
-> Read this first. It tells you what this repo is, what the data means, how the
-> federated baseline pipeline should be built, and how the baseline work maps onto the
-> funded project plan.
+> Project memory + onboarding guide + baseline modelling strategy.
+> Read this first. It tells you what this repo is, what the data means, how the federated pipeline
+> is built, and how the work maps onto the funded project plan.
+>
+> Operational counterpart: [`.claude/skills/flip-it-ckd/SKILL.md`](.claude/skills/flip-it-ckd/SKILL.md)
+> — *what to do*, in what order, and what to refuse. This file is *what is true*.
 
 ---
 
 ## 0. Immutable constraints — DO NOT VIOLATE (read first)
 
 > 🔒 **These are non-negotiable project invariants.** They override convenience, performance, and
-> any default behavior. Do not weaken, remove, or "temporarily" work around them, and preserve them
+> any default behaviour. Do not weaken, remove, or "temporarily" work around them, and preserve them
 > verbatim across any edit to this file. If a task appears to require breaking one, STOP and surface
 > the conflict to the user instead of proceeding.
 
 1. **🔒 Flower.ai is MANDATORY — this is a partnership requirement.** All federated training and
-   aggregation MUST use the real `flwr` package: `flwr.client.NumPyClient`, the `ServerApp` /
-   `ClientApp` components, and `flwr.server.strategy` (`FedAvg`, and `FedXgbBagging` for federated
-   trees). **NEVER hand-roll, reimplement, copy, or substitute any Flower primitive** — not FedAvg
-   averaging, not the client/server protocol, not the strategies. If Flower's Ray runtime can't run
-   locally (e.g. the space-in-path issue), you still drive **Flower's own strategy objects**
-   in-process (`FedAvg.aggregate_fit` / `aggregate_evaluate`) — you do **not** write a custom
-   aggregator. *Current state: `simulate.py` drives the real `flwr` `FedAvg`; `flwr run .` runs the
-   full stack from a space-free venv via `UV_PROJECT_ENVIRONMENT` (see §6).*
+   aggregation MUST use the real `flwr` package: the `ServerApp` / `ClientApp` components and
+   `flwr.serverapp.strategy` (`FedAvg`, `FedProx`, `FedXgbBagging`). **NEVER hand-roll, reimplement,
+   copy, or substitute any Flower primitive** — not FedAvg averaging, not the client/server
+   protocol, not the strategies. Where a runner drives strategies in-process rather than over the
+   wire, it still calls **Flower's own strategy objects** (`aggregate_train` / `aggregate_evaluate`)
+   — it does not write a custom aggregator.
 
 2. **🔒 ONLY models that can run with Flower are allowed — no exceptions.** The system deploys
    federated, so a model with no `flwr` federation path is never a candidate, not even as a "quick
-   baseline" or a centralized-only extra. The permitted set is exactly **`logreg` + `mlp` (FedAvg)**
-   and **`xgboost` (FedXgbBagging)**. Do **NOT** add random forest, plain GBT/HistGradientBoosting,
-   LightGBM, CatBoost, k-NN, SVM, or any estimator that can't be aggregated by a Flower strategy. A
-   new model may be introduced only if it has a genuine Flower federation path (weight-averageable
-   for `FedAvg`, or a real Flower tree/strategy). The pooled-data runs in `centralized.py` are the
-   non-federated *ceiling* and may use **only these same Flower-compatible models** — they are never
-   an excuse to bring in a non-federatable one. If a model can't federate with Flower, it does not
-   belong in this repo.
+   baseline" or a centralized-only extra. The permitted set is exactly **`logreg` + `mlp`
+   (FedAvg/FedProx)** and **`xgboost` (FedXgbBagging)**. Do **NOT** add random forest, plain
+   GBT/HistGradientBoosting, LightGBM, CatBoost, k-NN, or SVM. A new model may be introduced only if
+   it has a genuine Flower federation path. The pooled-data runs in `centralized.py` are the
+   non-federated *ceiling* and may use **only these same Flower-compatible models**.
 
-3. **🔒 Patient data never leaves the practice.** Only model parameters/weights cross the federation
-   boundary — never raw patient rows. Do not centralize, pool, upload, or transmit practice data.
-   The *only* permitted pooling is the explicitly-labeled centralized "ceiling" baselines
-   (`centralized.py`), which are non-federated references and must stay clearly marked as such.
+3. **🔒 Patient data never leaves the practice.** Only model parameters, or the explicitly designed
+   protocol payloads, cross the federation boundary — never raw patient rows. Do not centralize,
+   pool, upload, or transmit practice data. The *only* permitted pooling is the explicitly-labelled
+   centralized "ceiling" baselines (`centralized.py`), which are non-federated references and must
+   stay clearly marked as such.
 
 4. **🔒 `uv` is the only environment & dependency manager.** No `pip` / `conda` / `poetry` /
    `virtualenv`, and no hand-editing `.venv`. Add dependencies via `uv add` / `pyproject.toml` +
@@ -48,316 +46,223 @@
    **sensitivity** (recall for CKD positives), and always log **both** the global sample-weighted
    mean **and** the worst/min client per round. Never report accuracy alone, and never drop the
    per-/worst-client logging — a model can look "accurate" while collapsing on an outlier practice.
+   Every strategy must be constructed with `evaluate_metrics_aggr_fn=weighted_and_worst`.
 
 6. **🔒 Reproducibility is fixed.** One global seed → derived per-practice seeds; identical seeds,
-   splits, and feature set across every model in a comparison. Vary only the model. Never compare
-   architectures on different splits/seeds.
+   splits, and feature set across every model in a comparison. Vary only the thing under test.
+   Never compare architectures or protocols on different splits/seeds.
+
+7. **🔒 All project code lives inside `FL-CKD-Flower/`.** No project file is created, moved, or
+   imported outside this directory. `/home/jovyan/Fed_Agent/` is **not** part of this project — it
+   is an unrelated stub repo and must never be treated as project code.
+
+8. **🔒 Custom federation logic is a Flower `Strategy` subclass.** New protocols subclass
+   `flwr.serverapp.strategy.Strategy` (or `FedAvg`, which is one) and override its methods. That is
+   Flower's own sanctioned extension point and does **not** violate rule 1 — reimplementing FedAvg's
+   averaging or the client/server transport still does. Prefer a built-in strategy whenever one
+   exists.
 
 ---
 
 ## 1. Project overview
 
-**FLIP-IT** (*Federated Learning im Praxisnetzwerk – Infrastruktur für dezentrales
-Training medizinischer KI-Modelle*) is a NEXT.IN.NRW / EFRE-JTF NRW innovation project run
-by a consortium of **docport GmbH** (coordinator, Essen), the **Institut für Künstliche
-Intelligenz in der Medizin (IKIM), Universitätsmedizin Essen** (HL7 FHIR harmonization via
-the SHIP platform), the **AG Trustworthy Machine Learning at Ruhr-Universität Bochum**
-(**Prof. Dr. Michael Kamp** — the PI for this repository; federated learning on non-IID data,
-FedBN), and the medical-law firm **Jorzig & Partner** (legal/data-protection review). The goal
-is a **federated-learning infrastructure spanning 25 regional general-practitioner (Hausarzt)
-practices** that trains a **chronic kidney disease (CKD) risk model** on **HL7-FHIR–harmonized**
-routine care data — *the model travels to the data, the patient data never leaves the
-practice* — coordinated with **Flower.ai**, and ultimately hardened with **Differential Privacy
-(DP) and Secure Aggregation (SecAgg)**.
+**FLIP-IT** is a NEXT.IN.NRW / EFRE-JTF NRW innovation project run by a consortium of **docport
+GmbH** (coordinator, project lead Dr. med. Nicolas Conze), the **Institut für Künstliche Intelligenz
+in der Medizin (IKIM), Universitätsmedizin Essen** (HL7 FHIR harmonisation via the SHIP platform;
+KITE GPU/Kubernetes infrastructure), the **AG Trustworthy Machine Learning at Ruhr-Universität
+Bochum** (**Prof. Dr. Michael Kamp** — federated learning on non-IID data, FedBN), and the
+medical-law firm **Jorzig & Partner** (legal / data-protection review).
 
-> ⚠️ **This repository is the pre-kickoff baseline *sandbox*, not the funded production
-> system.** Its purpose is to *de-risk* the project before official kickoff: stand up
-> preliminary baseline models now — on the **synthetic CKD dataset** that stands in for the
-> real practice data — so that when funded work begins the team already has (a) reference
-> metrics, (b) a working federated pipeline, and (c) a documented feature contract. Privacy
-> mechanisms (DP/SecAgg) are intentionally **deferred** here; the baseline runs **plain
-> FedAvg** to establish clean reference numbers.
+The goal is a **federated-learning infrastructure spanning 25 regional GP (Hausarzt) practices**
+that trains a **chronic kidney disease (CKD) risk model** on **HL7-FHIR–harmonised** routine care
+data — *the model travels to the data, the patient data never leaves the practice* — coordinated
+with **Flower.ai** (the Antrag records a Letter of Intent from FlowerAI), and hardened with
+**Differential Privacy and Secure Aggregation**.
+
+Ground truth for all of the above: [`docs/01 Projektantrag Innovationswettbewerb NEXT.IN.NRW.pdf`](docs/).
+
+> ⚠️ **This repository is the pre-kickoff baseline *sandbox*, not the funded production system.**
+> Its purpose is to de-risk the project before kickoff: establish reference metrics, a working
+> federated pipeline, and a documented feature contract on **synthetic** data standing in for real
+> practice data.
+
+`docs/2025_11_Guetersloh_KI im klinischen Alltag.pdf` is an image-based slide deck (one extractable
+text slide, about CellViT). **It contains nothing citable for this project** — do not source claims
+from it.
 
 ---
 
 ## 2. Repository map
 
-The repo centers on the **root scikit-learn baseline** driven by the **synthetic CKD dataset**.
-
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| `synthetic_ckd_data.csv` | **Primary working dataset.** 2000 synthetic patients, 10 features + `ckd_stage3plus` label. Stand-in for real practice data until the HL7 FHIR export is available. Detailed in §3. |
-| `client.py` | Flower `NumPyClient` running per practice; logistic regression via sklearn `SGDClassifier(loss="log_loss")` with warm-start across rounds. **Has known bugs — see §8.** |
-| `server.py` | Flower server, **FedAvg** strategy, 20 rounds, min 8/12 clients. |
-| `extract_features.sql` | **Canonical feature contract for the *real* data.** Tomedo→PostgreSQL CKD "landmark" extraction: inclusion/exclusion, dx flags, eGFR/HbA1c (last + mean-of-3), composite KDIGO-style incident label. Run once per practice to produce a local CSV once real data arrives. Detailed in §3. |
-| `requirements.txt` | Lightweight env: `flwr==1.8.0`, scikit-learn, pandas, numpy. |
-| `README.md` | German-language baseline description, deployment steps, feature table, expected metrics. |
-
-> 🗑️ **`flower_demo/` is temporary practice scaffolding and will be deleted.** It was Andy's
-> initial Flower/PyTorch exploration before the real data was available. **Do not build on it
-> or treat it as part of the project.** Concepts worth carrying forward (a small MLP, a non-IID
-> data partitioner) are re-specified below as **net-new code in the root repo**, not as reuse
-> of `flower_demo/`.
+| `client_app.py` | Flower `ClientApp` — one practice. `@app.train()` / `@app.evaluate()` on the Message API. `build_client_from_frame()` is the **only** client constructor. |
+| `server_app.py` | Flower `ServerApp` — `@app.main()`, `strategy.start()`, and `weighted_and_worst` (dual-level metrics + the L5 privacy policy). |
+| `simulate.py` | In-process runner over Flower's real strategies → `uv run ckd-simulate`. Fast per-round benchmarking without Ray. |
+| `benchmark.py` | The protocol benchmark → `uv run ckd-benchmark` → `results/benchmark.json`. |
+| `privacy.py` | DP sweep + SecAgg+ feasibility probe → `uv run ckd-privacy` → `results/privacy.json`. |
+| `centralized.py` | Pooled-data ceiling baselines → `uv run ckd-baseline`. **Use `--clinics` when comparing against `--clinics` runs.** |
+| `messages.py` | Single definition of the Flower `Message` shapes the in-process runners exchange. |
+| `task.py` | Local `StandardScaler`, the imbalanced-data metrics, and the T2.5 `fairness_metrics`. |
+| `data/` | `loader.py` (+ §3 missingness rules), `partition.py` (Dirichlet non-IID), `synthesize.py` (per-clinic generator + the FedMosaic public cohort), `fhir_loader.py` (the production FHIR path). Also holds the datasets. |
+| `models/` | `base.py`, `logreg.py`, `mlp.py` (FedAvg-compatible), `fedxgb.py` (FedXgbBagging). |
+| `models/protocols/` | The protocol benchmark: `common.py` (explicit logistic regression), `fedmosaic.py` (the `Strategy` subclass). |
+| `extract_features.sql` | Canonical feature contract for the **real** Tomedo→PostgreSQL export. |
+| `docs/` | `PRIVACY.md`, `DEPLOYMENT.md`, `REPORT.md`, `LEGAL-TECHNICAL-ANSWER.md`, and the source PDFs. |
+| `notebooks/` | The federation walkthrough. |
+| `results/` | Generated benchmark/privacy JSON (gitignored). |
 
 ---
 
 ## 3. Data
 
-### 3a. Synthetic working dataset — `synthetic_ckd_data.csv` (use this now)
+### 3a. Synthetic working schema — 10 features + label
 
-A flat file of **2000 synthetic patients**, one row each, **no practice column** (federation is
-simulated by partitioning — see §4). Schema matches `client.py`'s `FEATURE_COLS`:
+`age_years`; the binary flags `dx_hypertonie` (I10), `dx_diabetes` (E10/E11/E13), `dx_khk` (I25),
+`dx_adipositas` (E66), `dx_herzinsuffizienz` (I50/I11.0), `dx_hyperurikaemie` (M10); and
+`years_since_{hypertonie,diabetes,khk}_dx`. Label `ckd_stage3plus`.
 
-| Column | Type | Notes |
+**Missingness rules (apply in every model's preprocessing):**
+- **`dx_*` flags** — an absent value is a **structural zero** (not documented → assumed absent). **Do not median-impute.**
+- **`years_since_*`** — 0 already encodes "diagnosis absent", paired with its `dx_` flag.
+- **Continuous labs (real data only)** — median-impute **plus** a binary missing-indicator; a missing lab is itself informative.
+
+Two datasets exist and they behave very differently:
+
+| Dataset | What it is | Expected result |
 |---|---|---|
-| `age_years` | continuous | age at landmark |
-| `dx_hypertonie` | binary | ICD I10 present |
-| `dx_diabetes` | binary | ICD E10/E11/E13 |
-| `dx_khk` | binary | ICD I25 (coronary heart disease) |
-| `dx_adipositas` | binary | ICD E66 |
-| `dx_herzinsuffizienz` | binary | ICD I50/I11.0 |
-| `dx_hyperurikaemie` | binary | ICD M10 |
-| `years_since_hypertonie_dx` | continuous | 0 when diagnosis absent |
-| `years_since_diabetes_dx` | continuous | 0 when diagnosis absent |
-| `years_since_khk_dx` | continuous | 0 when diagnosis absent |
-| `ckd_stage3plus` | binary | **label** — CKD stage ≥ 3 |
+| `data/synthetic_ckd_data.csv` | 2000-row **wiring placeholder**, max \|feature-label correlation\| 0.031 | **AUROC ≈ 0.5 is CORRECT.** Use it as a negative control. |
+| `data/clinics/*.csv` (`uv run ckd-clinics`) | Per-clinic, non-IID, sharing one true logistic risk model | AUROC ≈ 0.80 federated, 0.86 pooled ceiling |
 
-**Missingness rule (apply in every model's preprocessing):**
+### 3b. Canonical contract for real data — `extract_features.sql`
 
-- **Binary diagnostic flags (`dx_*`):** an absent value is a **structural zero** (condition not
-  documented → assumed absent). **Do not median-impute these.**
-- **`years_since_*`:** 0 already encodes "diagnosis absent" and is paired with the matching
-  `dx_*` flag, so keep the flag as the real signal and do not double-count.
-- **Continuous labs (when added — see §3b):** median-impute **+ carry a binary
-  missing-indicator**; a missing lab is itself informative.
+When real HL7-FHIR / Tomedo data arrives, **the SQL defines the truth**.
 
-> ⚠️ **This synthetic schema is the *old* 10-feature set and differs from the canonical
-> `extract_features.sql` contract** (§3b) — notably it has **no eGFR / HbA1c / sex** and uses a
-> different comorbidity granularity. It is a usable stand-in for wiring up the federated
-> pipeline today, but plan to reconcile onto the SQL contract when real data lands (§8).
+- **Landmark (`Stichtag`):** rolling, `CURRENT_DATE − 365 days`. **Outcome window** `[t0, t0+365d)`.
+- **Inclusion:** living patients, 18–95, sex documented; ≥1 contact ≥52 weeks before `t0`; **no known CKD (`N18.*`) before `t0`**; not a test patient.
+- **Exclusion TODOs still open in the SQL:** dialysis (`OPS 8-854.*` / `Z99.2`), transplant (`Z94.0`), Vertretungsscheine.
+- **Label `ckd_incident`:** confirmed `N18.*` (typ='G') **or** eGFR ≤ 60 with a predecessor ≥ 90 days earlier also ≤ 60.
+- **CVD coverage TODO:** has I20–I25, I50, I63–I66; missing I47–I49, I60–I62, I70, I73.9.
 
-### 3b. Canonical feature contract for real data — `extract_features.sql`
-
-When the real HL7 FHIR / Tomedo data arrives, **the SQL defines the truth** and the synthetic
-schema is migrated to match it.
-
-- **Landmark / Stichtag:** rolling, `CURRENT_DATE − 365 days` (fix to a constant date for
-  reproducible runs). **Outcome window** is `[t0, t0 + 365 days)` — incidence in the following
-  year.
-- **Inclusion:** living patients, **18–95 years**, sex documented; ≥ 1 contact ≥ 52 weeks before
-  `t0`; **no known CKD (`N18.*`) before `t0`**; not a test patient.
-- **Exclusion TODOs (open in SQL):** dialysis (`OPS 8-854.*` / `ICD Z99.2`), kidney transplant
-  (`Z94.0`), substitute-billing scheins. Flag these as not-yet-implemented in cohort counts.
-- **Label `ckd_incident` (composite, KDIGO-aligned):** 1 if within the window either **(A)** a
-  confirmed (`typ='G'`, non-anamnestic) `N18.*` first diagnosis, **or (B)** eGFR ≤ 60 with a
-  predecessor ≥ 90 days earlier also ≤ 60 and every value in the rolling 90-day window ≤ 60
-  (approximates KDIGO ≥ 3-month persistence).
-- **Features:** `alter_jahre`, `geschlecht` (1=M/0=W), `dm`/`aht`/`cvd` flags, `tage_seit_*`
-  (NULL when absent), `egfr_letzter`, `egfr_mittelwert_3`, `hba1c_letzter`, `hba1c_mittelwert_3`.
-  Same missingness rule as §3a (structural-zero flags; median-impute + indicator for labs).
-- **CVD coverage TODO:** currently I20–I25, I50, I63–I66; still missing I47–I49, I60–I62, I70,
-  I73.9 (PAVK).
-
-**Why this matters for the baseline:** the canonical contract adds **eGFR/HbA1c**, and **eGFR is
-the single strongest CKD predictor**. Its absence is the main limitation of today's synthetic
-baseline and the main expected lift once real data arrives.
+> ⚠️ **The two schemas are not the same prediction task.** The synthetic label is CKD stage ≥ 3
+> **prevalence**; the SQL label is **incidence in the following year among patients with no prior
+> CKD**. The columns differ too (`alter_jahre`, `geschlecht`, `dm`/`aht`/`cvd`, `tage_seit_*`,
+> `egfr_*`, `hba1c_*`). Migrating is a re-specification, not a rename.
+>
+> The real contract adds **eGFR — the single strongest CKD predictor** — and `geschlecht`, without
+> which the T2.5 sex-based bias analysis cannot be run at all.
 
 ---
 
-## 4. Pre-kickoff baseline strategy (core)
+## 4. Models and protocols
 
-Build **one model-agnostic federated pipeline** with **three swappable estimators**, all
-evaluated on the **same** feature set (synthetic now, canonical SQL contract later). The point is
-comparability: hold data, splits, seeds, and metrics fixed; vary only the model.
+### Models (all Flower-federatable, rule 2)
 
-### Shared pipeline
+| Model | Flower strategy | Role |
+|---|---|---|
+| Logistic regression (SGD, warm-start) | `FedAvg` / `FedProx` | reference model, grant task **T2.2** |
+| Small MLP (sklearn, torch-free) | `FedAvg` | linear-vs-non-linear comparison |
+| XGBoost | `FedXgbBagging` | gradient-boosted trees, federated by bagging |
 
-1. **Partition `synthetic_ckd_data.csv` across N simulated practices** (the file has no practice
-   column — see the non-IID partitioner below).
-2. **Per-practice preprocessing** (fit locally, never shared): `StandardScaler` for linear/NN;
-   §3 missingness handling; class imbalance via `class_weight='balanced'` (sklearn) / weighted
-   `BCEWithLogitsLoss` (NN).
-3. **Local train/test split** — 80/20, seeded, reproducible permutation before split.
-4. **Flower `NumPyClient`** — `get_parameters` / `set_parameters` / `fit` / `evaluate`.
-5. **FedAvg server** — aggregate weights; report **AUROC + sensitivity** per round, **both global
-   and per-client** (see §5).
+### The three protocols under test
 
-### Architecture A — Logistic Regression (linear; FLIP-IT **T2.2** anchor)
+| Protocol | Strategy | Model | Wire payload |
+|---|---|---|---|
+| **FedProx** | `flwr.serverapp.strategy.FedProx` (built-in) | logreg | coefficients |
+| **FedXgbBagging** | `flwr.serverapp.strategy.FedXgbBagging` (built-in) | xgboost | serialized trees |
+| **FedMosaic** | `models/protocols/fedmosaic.py` (`Strategy` subclass) | logreg | predictions + expertise on a public cohort |
 
-- Keep the `SGDClassifier(loss="log_loss")` **warm-start** pattern from `client.py` (parameter
-  exchange = `[coef_.flatten(), intercept_]`); `partial_fit` enables cross-round warm-starting,
-  which is why SGD is used instead of plain `LogisticRegression`.
-- This is the **reference model** and the one explicitly named in the grant (T2.2).
-- ⚠️ Fix the two `client.py` bugs (§8) when unifying.
+Plus two **reference baselines** that are not protocols but are required to interpret them: `local`
+(no collaboration — the FedMosaic paper's key finding is that this is a strong baseline) and
+`fedavg` (isolates what FedProx's μ term actually bought).
 
-### Architecture B — Small MLP (neural network) — **build fresh in root**
+**FedMosaic** implements Algorithm 1 of `docs/2507.00259v3.pdf`: dynamic loss weighting
+`α = exp(−(ℓ_pseudo − ℓ_priv)/ℓ_priv)` decides *when* to trust the consensus, and confidence-based
+aggregation `S = Σ diag(E_i)·L_i` decides *whose* predictions to trust. It is a **personalized** FL
+method — every practice keeps its own model.
 
-- Implement a small feed-forward net (a few hidden layers, dropout). **Two options:**
-  - **sklearn `MLPClassifier`** — keeps the lightweight env (no torch), but exposing/setting
-    `coefs_`/`intercepts_` for FedAvg weight exchange is fiddly.
-  - **A minimal PyTorch MLP** — cleaner `state_dict` weight exchange for Flower; adds a `torch`
-    dependency, so gate it behind an **optional** extra in `requirements.txt` rather than making
-    it mandatory for the logistic baseline.
-- **BatchNorm caveat:** if you use BatchNorm, per-practice batches can be tiny / class-skewed,
-  which destabilizes running stats under non-IID. Prefer `LayerNorm`/`GroupNorm`, or adopt
-  **FedBN** (keep BN params local) — directly aligned with Prof. Kamp's cited work.
-- **Input-dim:** set to the actual feature count after adding any missing-indicator columns;
-  don't hard-code an old fixed width.
+**SCAFFOLD is not available.** It is not in the `flwr` package (verified by inspection of 1.33.0 —
+neither `flwr.serverapp.strategy` nor `flwr.server.strategy` has it); it exists only in Flower
+Baselines as a standalone PyTorch reproduction project. FedProx is the shipped alternative for
+client-drift correction.
 
-### Architecture C — Federated XGBoost via `FedXgbBagging`
+### Non-IID design
 
-- XGBoost is the tree model the project keeps, because it is the **only tree model Flower can
-  federate** (immutable rule 2: every model must run with Flower). It can't FedAvg — there are no
-  weight vectors to average — so Flower federates it by **bagging**: each practice grows a few local
-  boosting rounds and the server appends those trees into one global ensemble
-  (`flwr.server.strategy.FedXgbBagging`). Implemented in `models/fedxgb.py`; run with
-  `uv run ckd-simulate --model xgboost`.
-- A **centralized, pooled-data** XGBoost (`ckd-baseline --model xgboost`) is kept only as the
-  non-federated **"best case if data could be centralized"** ceiling — the *same* Flower-compatible
-  model, trained on pooled data.
-- **Removed:** random forest, plain HistGradientBoosting, and LightGBM — none can run with Flower,
-  so they are not deployment candidates and have no place here.
-- **Purpose:** quantify (i) the **federated-vs-centralized** gap and (ii) the
-  **linear-vs-non-linear** gap on tabular EHR features.
-
-### Experimental protocol
-
-- **Fixed:** identical seeds, splits, and feature set across all three architectures.
-- **Report:** per-round **distributed AUROC + sensitivity** (§5).
-- **Compare:** (i) centralized-pooled vs federated per architecture; (ii) the three architectures
-  against one another; (iii) **IID vs non-IID** practice partitions.
-- **Expected baseline** (from `README.md`): sensitivity ~**0.6–0.75**, accuracy ~**0.70–0.80**.
-
-### Non-IID partitioner for 25 practices — **build fresh in root**
-
-`synthetic_ckd_data.csv` is a flat 2000-row file with **no practice id**, so the federation must
-be **simulated by partitioning** (or by regenerating data per practice). A naive equal random
-split is IID and unrealistic. Build a partitioner using a **hierarchical / archetype scheme**:
-
-- **Practice archetypes** (clinically interpretable, not a monotonic ramp): *urban-young*,
-  *rural-elderly*, *metabolic / high-diabetes*, *high-CVD*, *mixed*. Distribute the 25 practices
-  across these archetypes.
-- **Hierarchical priors (random effects):** each practice draws its own age / comorbidity-
-  prevalence profile from population-level priors anchored to German primary-care epidemiology
-  (hypertension ~25–30 %, diabetes ~9–15 %, plausible CKD base rate) — used either to **sample
-  rows** from the pooled CSV by skewed acceptance or to **regenerate** per-practice synthetic
-  rows.
-- **Three independently tunable non-IID knobs:** (1) **label/prior shift** — per-practice CKD
-  rate from a Beta prior; (2) **covariate shift** — per-practice feature means/variances;
-  (3) **quantity shift** — unequal panel sizes (small rural vs large urban). A Dirichlet
-  concentration `α` sweeps IID (`α→∞`) → strongly non-IID (`α→0`).
-- **Reproducibility:** one global seed → per-practice **derived** seeds.
-- **Rationale:** mirrors the **FedBN** / Prof. Kamp "non-IID features via local batch
-  normalization" motivation in the Projektantrag and stress-tests the MLP BatchNorm caveat.
+`data/synthesize.py` builds clinics from five clinically interpretable archetypes (urban-young,
+rural-elderly, metabolic, high-CVD, mixed) that differ in age, comorbidity prevalence, CKD rate and
+panel size — non-IID on covariate, label and quantity — while sharing **one true risk model**, so
+there is a global truth to learn. `data/partition.py` provides Dirichlet label partitioning
+(`alpha→0` skewed, `alpha→∞` IID) for the flat CSV.
 
 ---
 
 ## 5. Federated setup
 
-- **Client/server contract (Flower):** each client implements `get_parameters`,
-  `set_parameters`, `fit`, `evaluate`; the server runs **FedAvg** (sample-weighted average of
-  client updates). The parameter serializer is architecture-specific: `[coef_, intercept_]` for
-  the sklearn logistic client, `state_dict` arrays for a PyTorch MLP.
-- **Two execution modes:**
-  - **Simulation** — many virtual clients in one process; fast IID/non-IID sweeps and
-    architecture comparison. (Build a small root simulation entry point to replace the
-    `flower_demo` one being deleted.)
-  - **Real deployment** — `server.py` + one `client.py` per practice machine over the network;
-    the shape the funded pilot will take.
-- **Metrics that matter (imbalanced data):** prioritize **AUROC** and **sensitivity/recall** for
-  CKD-positive cases over raw accuracy — a model that never predicts CKD can still look
-  "accurate" on a low-prevalence cohort.
-- **Dual-level metric logging (required).** In a non-IID network a model can show strong
-  **global aggregated** AUROC/sensitivity while **collapsing on outlier archetypes**
-  (rural-elderly vs urban-young). Log **both** the global sample-weighted mean **and**
-  **per-client local validation** metrics every round (including the **worst/min client**). This
-  quantifies performance drops from local feature variance and **pre-stages the T2.5 bias
-  analysis**.
+- **Client contract:** `@app.train()` / `@app.evaluate()` receive a `Message`; weights arrive as
+  `msg.content["arrays"]` and reply as `RecordDict({"arrays": ArrayRecord, "metrics": MetricRecord})`
+  with `num-examples` — the key Flower weights the average by.
+- **Two execution modes:** `flwr run .` (full Ray simulation engine, real ServerApp/ClientApp) for
+  end-to-end checks; `uv run ckd-simulate` (in-process, Flower's real strategies) for fast
+  reproducible benchmarking with per-round history.
+- **Dual-level metric logging is required** (rule 5) and is *pre-staging the T2.5 bias analysis*.
+- **Fairness (T2.5):** the Antrag names **demographic parity, equal opportunity, equalized odds, and
+  calibration by group**. `task.fairness_metrics()` implements all four as gaps. The Antrag
+  specifies them **by sex**, which the synthetic schema cannot support (§3b).
 
 ---
 
 ## 6. Conventions & commands
 
-`uv`-managed project (see immutable rule 4). Dependencies + scripts live in `pyproject.toml`; the
-federated stack is `flwr` (real Flower, immutable rule 1) + scikit-learn / pandas / numpy. Optional
-extras: `dev`, `notebook`. (XGBoost is a **core** dependency — it's a first-class federated model
-via `FedXgbBagging`, not an optional extra.) The `scripts/` wrappers and `Makefile` targets all call
-these.
+`uv`-managed (rule 4). `flwr` is pinned to the **1.33** line — the Message API and the
+`flwr.serverapp.strategy` namespace.
 
 ```bash
 uv sync --extra dev --extra notebook      # build/repair the env  (= make setup)
 
-# Federated baseline — drives Flower's REAL strategies in-process (works on this space-in-path):
-uv run ckd-simulate                       # logreg via FedAvg, 12 practices, 20 rounds, non-IID
-uv run ckd-simulate --model mlp --iid
-uv run ckd-simulate --model xgboost       # federated trees via FedXgbBagging
-uv run ckd-simulate --clinics             # one practice per on-disk data/clinics/ CSV (run ckd-clinics first)
+uv run ckd-clinics --clinics 10           # generate the per-clinic datasets -> data/clinics/
+uv run ckd-simulate --clinics             # logreg via FedAvg, non-IID
+uv run ckd-simulate --model xgboost --clinics
+uv run ckd-simulate --protocol fedmosaic --clinics
+uv run ckd-baseline --model all --clinics # pooled ceiling on the SAME data
+uv run ckd-benchmark --rounds 20          # full protocol benchmark -> results/
+uv run ckd-privacy --seeds 42 43 44 45 46 # DP sweep + SecAgg probe  -> results/
 
-# Generate synthetic per-clinic datasets (the FLIP-IT federation: many non-IID clinics, one shared
-# CKD truth) -> data/clinics/. Each CSV simulates one practice's extract_features.sql output:
-uv run ckd-clinics --clinics 10           # data/synthesize.py; see notebooks/ for the full demo
-
-# Centralized "ceiling" references (non-federated, pooled-data):
-uv run ckd-baseline --model all           # centralized ceiling: logreg | mlp | xgboost | all
+uv run flwr run .                         # full Ray engine, real ServerApp/ClientApp
 ```
 
-**Full Flower stack via `flwr run` (real `ServerApp`/`ClientApp` + Ray engine).** `flwr run .`
-crashes here because Ray cannot handle the **space** in this folder's path. The fix is a venv at a
-space-free path (does *not* require moving the project) — verified working:
-
-```bash
-export UV_PROJECT_ENVIRONMENT=/tmp/ckd_venv     # any space-free path
-uv sync --extra dev
-uv run flwr run .                               # full Flower simulation engine, real ServerApp/ClientApp
-```
-
-For real multi-node deployment, run the `ServerApp` on the central infrastructure and one
-`ClientApp` (SuperNode) per practice; per practice, export local data once with
-`psql -d tomedo -c "\COPY ($(cat extract_features.sql)) TO '/tmp/praxis_data.csv' CSV HEADER"`.
-
-> **MLP / torch:** the federated MLP uses sklearn (torch-free). A torch MLP is the documented
-> upgrade path and must stay behind an optional extra so the core stack stays lightweight.
+**Deployment:** SuperLink connection config lives in `~/.flwr/config.toml` from flwr 1.30+, not in
+`pyproject.toml`. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ---
 
-## 7. Roadmap alignment (baseline → AP2 milestones)
+## 7. Roadmap alignment (Projektantrag)
 
-| Baseline activity (now) | Maps to | When (per Projektantrag) |
+| Activity here | Maps to | When |
 |---|---|---|
-| Identify predictors from `extract_features.sql`; document feature contract | **T2.1** Identifikation Prädiktoren | Q4 2025 – Q1 2026 |
-| Logistic-regression federated baseline (Architecture A) | **T2.2** Logistisches Regressionsmodell | Q1 – Q3 2026 |
-| (deferred) DP-SGD / Secure Aggregation experiments | **T2.3** Privacy Enhancing Features | from Q2 2026 |
-| Centralized-vs-federated + architecture comparison; AUROC/sensitivity validation | **T2.4** Modellvalidierung | Q1 – Q3 2027 |
-| Per-client / per-archetype performance, bias audit (dual-level metrics) | **T2.5** Datenschutztests & Bias-Analyse | Q1 2027 onward |
+| Feature contract from `extract_features.sql` | **T2.1** Identifikation Prädiktoren | Q4 2025 – Q1 2026 |
+| Logistic-regression federated baseline | **T2.2** Logistisches Regressionsmodell | Q1 – Q3 2026 |
+| DP sweep, SecAgg probe, protocol payload analysis | **T2.3** Privacy Enhancing Features | from Q2 2026 |
+| Centralized-vs-federated gap, protocol benchmark | **T2.4** Modellvalidierung | Q1 – Q3 2027 |
+| Dual-level metrics, `fairness_metrics` | **T2.5** Datenschutztests & Bias-Analyse | Q1 2027 onward |
 
-Milestones for orientation: **MS1** (month 9) harmonized data + functional platform; **MS3**
-(month 13) first data collection at `t0`; **MS4** (month 18) **validated CKD model incl. DP +
-Secure Aggregation** (`t1`); **MS5** (month 24) pilot in **25 practices**. DP/SecAgg belong to
-MS4 — hence the baseline defers them.
+Milestones: **MS1** (m9) harmonised data + functional platform; **MS2** (m12) training workshop;
+**MS3** (m13) first collection at `t0`; **MS4** (m18) **validated CKD model incl. DP + Secure
+Aggregation**; **MS5** (m24) pilot in **25 practices**; **MS6** (m34) transfer strategy.
 
 ---
 
-## 8. Known issues / TODO
+## 8. Live issues
 
-### Bugs (documented, **not** fixed in this doc — fix during the baseline build)
-
-- **`client.py:148`** — uses `roc_auc_score` but **never imports it**
-  (`from sklearn.metrics import roc_auc_score` missing → `NameError` at evaluation).
-- **`client.py:83`** — reads the bare name `class_weight_balanced` inside `__init__`, but it is
-  only defined as a `main()` argument; `CKDClient.__init__` has no such parameter → constructor
-  **`NameError`**. (Add it as a constructor parameter or pass it through.)
-
-### Build / migration work (future)
-
-1. Fix the two `client.py` bugs above.
-2. **Delete `flower_demo/`** once its useful ideas (MLP, non-IID partitioner) are reimplemented in
-   the root repo.
-3. Build a **non-IID partitioner** for `synthetic_ckd_data.csv` (§4 archetype scheme) and a small
-   **root simulation runner**.
-4. Add a **model-selector flag** (`--model {logreg,mlp,xgboost}`) so all three architectures share one
-   pipeline, one preprocessing path, and one metrics harness.
-5. Implement **dual-level metric logging** (global + per-client / worst-client) in the server
-   metrics aggregation (§5).
-6. When real data arrives, **migrate the synthetic schema to the `extract_features.sql` contract**
-   (adds eGFR/HbA1c/sex — the expected performance lift).
-7. Leave DP/SecAgg hooks inactive until T2.3/MS4.
+1. **`extract_features.sql:342` exports `ep.patientid`** — a direct identifier in every practice
+   CSV. Drop or hash before any real extraction ([PRIVACY.md §2](docs/PRIVACY.md)).
+2. **DP ε is far too large to be meaningful** at the cohort size (48–969 over 20 rounds). The
+   biggest MS4 risk; needs more practices, fewer rounds, and a real accountant
+   ([PRIVACY.md §3](docs/PRIVACY.md)).
+3. **SecAgg+ is legacy-path only** in flwr 1.33 and cannot compose with `strategy.start()`
+   ([PRIVACY.md §4](docs/PRIVACY.md)).
+4. **No membership-inference testbed** — the L6 leakage audit is not yet built.
+5. **No test suite.** `pytest` and the `test` target were removed rather than left broken; real
+   tests still need writing.
+6. **Fairness is audited by age band, not sex** — blocked on the real schema's `geschlecht`.
+7. **XGBoost federates poorly here** (0.712 vs a 0.860 pooled ceiling) and cannot be protected by
+   SecAgg+. Logistic regression is the recommended deployment model.

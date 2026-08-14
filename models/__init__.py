@@ -1,4 +1,8 @@
-"""Model zoo: FedAvg-compatible logistic regression and MLP, plus a centralized GBT reference."""
+"""Model zoo: FedAvg-compatible logistic regression and MLP.
+
+Federated XGBoost is not built here — it has no weight vector to average, so it lives in
+`models/fedxgb.py` and federates through Flower's `FedXgbBagging` strategy instead.
+"""
 
 from .base import FederatedModel
 from .logreg import LogRegModel
@@ -18,7 +22,8 @@ def make_model(name: str, **kwargs) -> FederatedModel:
     except KeyError as exc:
         raise ValueError(
             f"Unknown federated model {name!r}; choose from {sorted(FEDERATED_MODELS)}. "
-            "('gbt' is centralized-only — use the ckd-baseline script.)"
+            "('xgboost' has no weight vector to average — it federates via FedXgbBagging; "
+            "see models/fedxgb.py.)"
         ) from exc
 
 
