@@ -7,20 +7,22 @@ name = "ckd-fl"
 version = "1.0.0"
 description = "FLIP-IT pre-kickoff baseline: federated CKD risk models with Flower.ai"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Andy Tai" }]
 keywords = ["federated-learning", "healthcare", "ckd", "flower"]
 
 # Lightweight, torch-free stack: logistic regression + sklearn MLP + gradient-boosted trees.
-# flwr pinned to the <1.20 line: federations live in this pyproject (self-contained / reproducible),
-# and `flwr run` uses the classic, stable simulation engine. 1.30+ moves federation config into a
-# user-global ~/.flwr/config.toml, which is not what we want for a shared research repo.
+# flwr pinned to the 1.33 line — the Message API (`@app.train()` / `ArrayRecord` / `Grid`) and the
+# `flwr.serverapp.strategy` namespace. This is the version the SuperLink/SuperNode deployment,
+# SecAgg+ and Differential Privacy documentation targets, and the one this project deploys against
+# (see docs/DEPLOYMENT.md). Federation *connection* config lives in ~/.flwr/config.toml from 1.30+;
+# run *defaults* still live here under [tool.flwr.app.config].
 # Every model is Flower-federatable (project rule, CLAUDE.md §0): logreg/mlp via FedAvg, xgboost via
 # FedXgbBagging — so xgboost is a core dependency, not an optional extra. (macOS needs OpenMP at
 # runtime for xgboost: `brew install libomp`.)
 dependencies = [
-    "flwr[simulation]>=1.13,<1.20",
+    "flwr[simulation]>=1.33,<1.34",
     "scikit-learn>=1.3.0",
     "pandas>=2.0.0",
     "numpy>=1.24.0",
@@ -47,12 +49,17 @@ ckd-simulate = "simulate:main"
 ckd-baseline = "centralized:main"
 # Generate synthetic per-clinic datasets (the FLIP-IT federation). Run: uv run ckd-clinics
 ckd-clinics = "data.synthesize:main"
+# Full protocol benchmark -> results/benchmark.json. Run: uv run ckd-benchmark
+ckd-benchmark = "benchmark:main"
+# Privacy layer measurement -> results/privacy.json. Run: uv run ckd-privacy
+ckd-privacy = "privacy:main"
 
 # Flat layout: data/ and models/ packages plus top-level app modules at the repo root.
 [tool.hatch.build.targets.wheel]
 include = [
     "data", "models",
     "client_app.py", "server_app.py", "task.py", "centralized.py", "simulate.py",
+    "messages.py", "benchmark.py", "privacy.py",
 ]
 # Editable installs: put the project root on sys.path (path-based) rather than enumerating
 # modules, so every top-level .py here is importable and newly added files are picked up reliably.
@@ -79,16 +86,41 @@ iid = false                 # set true for an IID even split
 class-weight-balanced = true
 seed = 42
 
-[tool.flwr.federations]
-default = "local-sim"
+# Where each SuperNode reads its patients from: "csv" partitions the flat synthetic file,
+# "fhir" queries that practice's own FHIR server (fhir-base-url comes from --node-config).
+data-source = "csv"
 
-[tool.flwr.federations.local-sim]
-options.num-supernodes = 12  # number of simulated practices (keep == num-practices)
+# Privacy layer L5 (CLAUDE.md §9): anonymise per-practice metric lines / suppress small cohorts.
+metric-privacy = false
+min-cohort-size = 0
+
+
+#######################################################################
+# CONFIGURATION MIGRATION NOTICE:
+#
+# What was previously called "federation config" for SuperLink
+# connections in pyproject.toml has been renamed and moved.
+#
+# These settings are now **SuperLink connection configuration**
+# and are defined in the Flower configuration file.
+#
+# The entries below are commented out intentionally and are kept
+# only as a migration reference.
+#
+# Docs: https://flower.ai/docs/framework/ref-flower-configuration.html
+#######################################################################
+
+# [tool.flwr.federations]
+# default = "local-sim"
+
+# [tool.flwr.federations.local-sim]
+# options.num-supernodes = 12  # number of simulated practices (keep == num-practices)
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint.per-file-ignores]
-# Notebooks: sys.path bootstrap before imports (E402); compact one-line statements are fine (E702).
-"notebooks/*.ipynb" = ["E402", "E702"]
+# Notebooks: sys.path bootstrap before imports (E402); compact one-line statements and grouped
+# imports are idiomatic in a notebook setup cell (E702, E401).
+"notebooks/*.ipynb" = ["E402", "E702", "E401"]

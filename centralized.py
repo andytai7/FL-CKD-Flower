@@ -12,7 +12,12 @@ can run with Flower; see CLAUDE.md §0):
 
     uv run ckd-baseline --model all
     uv run ckd-baseline --model xgboost
-    uv run ckd-baseline --model logreg
+    uv run ckd-baseline --clinics            # pooled data/clinics/ — comparable to --clinics runs
+
+⚠️ **Match the data source to the federated run you are comparing against.** The default reads the
+flat `synthetic_ckd_data.csv`, which is a signal-less placeholder — its ceiling is AUROC ≈ 0.5 and it
+is NOT a valid ceiling for `ckd-simulate --clinics`. Use `--clinics` here whenever the federated side
+used `--clinics`, or the "price of privacy" gap you compute is just a dataset difference.
 """
 
 from __future__ import annotations
@@ -20,13 +25,21 @@ from __future__ import annotations
 import argparse
 
 import numpy as np
+import pandas as pd
 
-from data import load_dataframe, to_xy
+from data import load_clinic_frames, load_dataframe, to_xy
 from models import make_model
 from models.fedxgb import predict_pooled, train_pooled
 from task import compute_metrics, fit_scaler
 
 MODELS = ("logreg", "mlp", "xgboost")
+
+
+def load_pooled(clinics: bool = False) -> pd.DataFrame:
+    """The pooled training frame: every clinic stacked, or the flat synthetic CSV."""
+    if clinics:
+        return pd.concat(load_clinic_frames(), ignore_index=True)
+    return load_dataframe()
 
 
 def _split(X, y, seed, test_frac=0.2):
@@ -37,8 +50,10 @@ def _split(X, y, seed, test_frac=0.2):
     return X[:split], y[:split], X[split:], y[split:]
 
 
-def run_centralized(model_name: str, seed: int = 42, local_epochs: int = 50) -> dict:
-    X, y = to_xy(load_dataframe())
+def run_centralized(
+    model_name: str, seed: int = 42, local_epochs: int = 50, *, clinics: bool = False
+) -> dict:
+    X, y = to_xy(load_pooled(clinics))
     X_train, y_train, X_test, y_test = _split(X, y, seed)
 
     if model_name == "xgboost":
@@ -64,12 +79,18 @@ def main() -> None:
         help="Which centralized baseline(s) to run",
     )
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--clinics", action="store_true",
+        help="pool the on-disk data/clinics/ CSVs instead of the flat synthetic CSV. Use this "
+             "whenever you are comparing against `ckd-simulate --clinics`. Run ckd-clinics first.",
+    )
     args = parser.parse_args()
 
     names = list(MODELS) if args.model == "all" else [args.model]
-    print("Centralized (pooled-data) baselines — performance ceiling\n" + "-" * 56)
+    source = "pooled data/clinics/" if args.clinics else "flat synthetic_ckd_data.csv"
+    print(f"Centralized (pooled-data) baselines — performance ceiling [{source}]\n" + "-" * 64)
     for name in names:
-        m = run_centralized(name, seed=args.seed)
+        m = run_centralized(name, seed=args.seed, clinics=args.clinics)
         print(
             f"{name:>9}:  AUROC={m['auc']:.3f}  sensitivity={m['sensitivity']:.3f}  "
             f"accuracy={m['accuracy']:.3f}"

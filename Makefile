@@ -3,7 +3,7 @@
 # First time only:  make setup
 .DEFAULT_GOAL := help
 
-.PHONY: help setup clinics baseline simulate simulate-mlp iid notebook lab test lint clean
+.PHONY: help setup clinics baseline simulate simulate-mlp iid notebook lab lint clean
 
 help:           ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -32,9 +32,6 @@ notebook:       ## Re-run the exploration notebook headless (verifies it still w
 
 lab:            ## Open the notebook interactively in your browser
 	./scripts/lab.sh
-
-test:           ## Run the test suite
-	./scripts/test.sh
 
 lint:           ## Lint with ruff
 	./scripts/lint.sh

@@ -1,26 +1,28 @@
-"""In-process federated simulation driven by Flower.ai's **real** strategies.
+"""In-process federated simulation driven by Flower.ai's **real** strategies (flwr 1.33).
 
-`flwr run` uses Flower's Ray simulation engine, which cannot handle a project path containing a
-space (this folder, `.../FL CKD Flower`, has one) — Ray's worker launcher splits the path and
-crashes. This runner avoids Ray, but **everything that matters is still genuine `flwr` code**:
+`flwr run .` runs the full Ray simulation engine with the real `ServerApp`/`ClientApp` and is the
+right tool for an end-to-end check (see CLAUDE.md §6). This runner exists for a different job:
+**fast, reproducible, per-round benchmarking** — it returns the full metrics history each round so
+callers can plot learning curves and compare protocols, without Ray process startup between runs.
 
-- `logreg` / `mlp` are the real `flwr.client.NumPyClient` aggregated by the real
-  `flwr.server.strategy.FedAvg` (we call its `aggregate_fit` / `aggregate_evaluate` each round);
-- `xgboost` is federated by the real `flwr.server.strategy.FedXgbBagging` — each practice grows a
-  few local trees and the strategy bags them into one global ensemble (see `models/fedxgb.py`);
+Everything that matters is still genuine `flwr` code — this is not a reimplementation of
+federation:
+
+- `logreg` / `mlp` are aggregated by the real `flwr.serverapp.strategy.FedAvg`, by calling its
+  `aggregate_train` / `aggregate_evaluate` on real `Message` objects each round;
+- `xgboost` is federated by the real `FedXgbBagging` — each practice grows a few local trees and
+  the strategy bags them into one global ensemble (see `models/fedxgb.py`);
 - metric aggregation is the real `server_app.weighted_and_worst`, wired as the strategy's
-  `evaluate_metrics_aggregation_fn`, exactly as the ServerApp does it.
-
-So this is not a re-implementation of federation — it is Flower's own strategies, executed without
-the Ray transport layer. For the full Ray engine, run `flwr run .` from a space-free path (see
-CLAUDE.md §6: set `UV_PROJECT_ENVIRONMENT` to a path without spaces).
+  `evaluate_metrics_aggr_fn`, exactly as the ServerApp does it;
+- the protocol benchmark uses Flower's built-in `FedAvg` and `FedProx` plus `FedMosaic`, a
+  `Strategy` subclass in `models/protocols/` — Flower's own extension point (CLAUDE.md §0 rule 8).
 
     uv run ckd-simulate                       # 12 practices, 20 rounds, logreg (FedAvg), non-IID
     uv run ckd-simulate --model mlp --rounds 10
     uv run ckd-simulate --model xgboost       # federated trees via FedXgbBagging
-    uv run ckd-simulate --iid                 # IID comparison
     uv run ckd-simulate --clinics             # one practice per on-disk data/clinics/ CSV
-    uv run ckd-simulate --clinics --model xgboost
+    uv run ckd-simulate --protocol fedprox --clinics     # protocol benchmark (logreg only)
+    uv run ckd-simulate --protocol fedmosaic --clinics
 """
 
 from __future__ import annotations
@@ -29,24 +31,18 @@ import argparse
 import contextlib
 import io
 import math
+import time
 
 import numpy as np
-from flwr.common import (
-    Code,
-    EvaluateRes,
-    FitRes,
-    Parameters,
-    Status,
-    ndarrays_to_parameters,
-    parameters_to_ndarrays,
-)
-from flwr.server.strategy import FedAvg, FedXgbBagging
+from flwr.serverapp.strategy import FedAvg, FedXgbBagging
 
 from client_app import _local_split, build_client_from_frame
 from data import NUM_FEATURES, load_clinic_frames, load_partition, to_xy
+from messages import evaluate_reply, hushed, train_reply
 from models import make_model
 from models.fedxgb import XgbPractice
-from server_app import weighted_and_worst
+from models.protocols import BASELINES, PROTOCOLS
+from server_app import configure_metric_privacy, weighted_and_worst
 from task import compute_metrics
 
 # Mirrors [tool.flwr.app.config]; overridable via CLI below.
@@ -59,38 +55,49 @@ DEFAULT_CONFIG = {
     "seed": 42,
 }
 
-_OK = Status(code=Code.OK, message="")
+# The three protocols under test, plus the two reference baselines needed to read them.
+PROTOCOL_CHOICES = (*PROTOCOLS, *BASELINES)
 
 
-# ── FedAvg (logreg / mlp) ───────────────────────────────────────────────────
+# ── Strategy helpers ────────────────────────────────────────────────────────
 
 
 def _make_fedavg() -> FedAvg:
-    """The same FedAvg the ServerApp builds — used here for its aggregate_fit/aggregate_evaluate."""
+    """The same FedAvg the ServerApp builds — used here for its aggregate_* methods."""
     return FedAvg(
-        fraction_fit=1.0,
+        fraction_train=1.0,
         fraction_evaluate=1.0,
-        evaluate_metrics_aggregation_fn=weighted_and_worst,
-        fit_metrics_aggregation_fn=lambda _metrics: {},  # silence the "no fn provided" warning
+        evaluate_metrics_aggr_fn=weighted_and_worst,
     )
 
 
 def fedavg(updates: list[tuple[list[np.ndarray], int]]) -> list[np.ndarray]:
-    """Sample-weighted average via Flower's real FedAvg strategy (`aggregate_fit`).
+    """Sample-weighted average via Flower's real FedAvg strategy (`aggregate_train`).
 
     Kept as a small helper (used by the notebooks) so callers get genuine `flwr` aggregation from a
     simple ``[(weights, n), ...]`` input rather than constructing Flower message types themselves.
     """
-    results = [
-        (
-            None,
-            FitRes(status=_OK, parameters=ndarrays_to_parameters(params), num_examples=n,
-                   metrics={}),
-        )
-        for params, n in updates
-    ]
-    aggregated, _ = _make_fedavg().aggregate_fit(1, results, [])
-    return parameters_to_ndarrays(aggregated)
+    replies = [train_reply(params, n) for params, n in updates]
+    with contextlib.redirect_stdout(io.StringIO()):
+        arrays, _ = _make_fedavg().aggregate_train(1, replies)
+    return arrays.to_numpy_ndarrays()
+
+
+def fedxgb_bag(updates: list[tuple[bytes, int]], global_model: bytes | None = None) -> bytes:
+    """One round of Flower's real ``FedXgbBagging`` over ``[(local_trees, n), ...]``.
+
+    The tree counterpart of :func:`fedavg`, for the notebooks: hands back the grown global
+    ensemble without the caller having to build Flower message types.
+    """
+    strategy = FedXgbBagging()
+    strategy.current_bst = global_model if global_model is not None else b""
+    replies = [train_reply([np.frombuffer(trees, dtype=np.uint8)], n) for trees, n in updates]
+    with contextlib.redirect_stdout(io.StringIO()):
+        arrays, _ = strategy.aggregate_train(1, replies)
+    return arrays.to_numpy_ndarrays()[0].tobytes()
+
+
+# ── FedAvg (logreg / mlp) ───────────────────────────────────────────────────
 
 
 def _run_fedavg(frames: list, num_rounds: int, quiet: bool, config: dict) -> list[dict]:
@@ -107,24 +114,21 @@ def _run_fedavg(frames: list, num_rounds: int, quiet: bool, config: dict) -> lis
 
     history = []
     for rnd in range(1, num_rounds + 1):
-        # fit: every practice trains locally, then Flower's FedAvg averages the updates.
-        fit_results = [
-            (
-                None,
-                FitRes(status=_OK, parameters=ndarrays_to_parameters(params),
-                       num_examples=n, metrics=metrics),
-            )
-            for params, n, metrics in (client.fit(ndarrays, {}) for client in clients)
-        ]
-        aggregated, _ = strategy.aggregate_fit(rnd, fit_results, [])
-        ndarrays = parameters_to_ndarrays(aggregated)
+        # train: every practice trains locally, then Flower's FedAvg averages the updates.
+        replies = []
+        for client in clients:
+            params, n = client.fit(ndarrays)
+            replies.append(train_reply(params, n, **{"partition-id": float(client.partition_id)}))
+        with hushed():
+            arrays, _ = strategy.aggregate_train(rnd, replies)
+        ndarrays = arrays.to_numpy_ndarrays()
 
         # evaluate: per-client local validation, then Flower's dual-level aggregation.
-        eval_results = [
-            (None, EvaluateRes(status=_OK, loss=float(loss), num_examples=n, metrics=metrics))
-            for loss, n, metrics in (client.evaluate(ndarrays, {}) for client in clients)
-        ]
-        history.append(_aggregate_and_print(strategy, rnd, eval_results, quiet))
+        eval_replies = []
+        for client in clients:
+            metrics, n = client.evaluate(ndarrays)
+            eval_replies.append(evaluate_reply(metrics, n, client.partition_id))
+        history.append(_aggregate_and_print(strategy, rnd, eval_replies, quiet))
     return history
 
 
@@ -145,54 +149,67 @@ def _run_fedxgb(frames: list, num_rounds: int, quiet: bool, config: dict) -> lis
                 seed=seed,
             )
         )
-    strategy = FedXgbBagging(evaluate_metrics_aggregation_fn=weighted_and_worst)
+    strategy = FedXgbBagging(evaluate_metrics_aggr_fn=weighted_and_worst)
     global_model: bytes | None = None
 
     history = []
     for rnd in range(1, num_rounds + 1):
-        # fit: each practice grows local trees; FedXgbBagging bags them into the global ensemble.
-        fit_results = [
-            (
-                None,
-                FitRes(
-                    status=_OK,
-                    parameters=Parameters(tensor_type="", tensors=[pr.local_trees(global_model)]),
-                    num_examples=pr.num_examples, metrics={},
-                ),
+        started = time.perf_counter()
+        # train: each practice grows local trees; FedXgbBagging bags them into the global ensemble.
+        local_trees = [pr.local_trees(global_model) for pr in practices]
+        # What a practice actually uploads: its serialized new trees. Unlike a weight vector this
+        # grows with ensemble depth, so it is measured per round rather than assumed constant.
+        uplink_bits = 8.0 * float(np.mean([len(t) for t in local_trees]))
+        replies = [
+            train_reply(
+                [np.frombuffer(trees, dtype=np.uint8)],
+                pr.num_examples,
+                **{"partition-id": float(pid)},
             )
-            for pr in practices
+            for pid, (pr, trees) in enumerate(zip(practices, local_trees))
         ]
-        aggregated, _ = strategy.aggregate_fit(rnd, fit_results, [])
-        global_model = aggregated.tensors[0]
+        # FedXgbBagging tracks the ensemble it last broadcast in `current_bst`, which it normally
+        # sets inside configure_train (the Grid path we bypass here). Seed it with the same value
+        # configure_train would have — b"" on round 1, so the first practice's trees seed the bag.
+        strategy.current_bst = global_model if global_model is not None else b""
+        with hushed():
+            arrays, _ = strategy.aggregate_train(rnd, replies)
+        global_model = arrays.to_numpy_ndarrays()[0].tobytes()
 
         # evaluate: each practice scores the global ensemble on its local validation set.
-        eval_results = []
+        eval_replies = []
         for pid, pr in enumerate(practices):
             metrics = compute_metrics(pr.y_val, pr.predict_proba(global_model))
-            metrics["partition_id"] = float(pid)
-            eval_results.append(
-                (None, EvaluateRes(status=_OK, loss=1.0 - metrics["accuracy"],
-                                   num_examples=len(pr.y_val), metrics=metrics))
-            )
-        history.append(_aggregate_and_print(strategy, rnd, eval_results, quiet))
+            eval_replies.append(evaluate_reply(metrics, len(pr.y_val), pid))
+        row = _aggregate_and_print(strategy, rnd, eval_replies, quiet)
+        row["uplink-bits-per-client"] = uplink_bits
+        row["round-seconds"] = time.perf_counter() - started
+        history.append(row)
     return history
 
 
 # ── shared ──────────────────────────────────────────────────────────────────
 
 
-def _aggregate_and_print(strategy, rnd: int, eval_results, quiet: bool) -> dict:
+def _aggregate_and_print(strategy, rnd: int, eval_replies, quiet: bool) -> dict:
     """Run the strategy's real aggregate_evaluate (→ weighted_and_worst) and print the round line."""
-    if quiet:  # aggregate_evaluate triggers weighted_and_worst's per-client prints; hide them
-        with contextlib.redirect_stdout(io.StringIO()):
-            _, agg = strategy.aggregate_evaluate(rnd, eval_results, [])
-    else:
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        agg = strategy.aggregate_evaluate(rnd, eval_replies)
+    metrics = dict(agg) if agg else {}
+
+    if not quiet:
         print(f"[ROUND {rnd}]")
-        _, agg = strategy.aggregate_evaluate(rnd, eval_results, [])
-    auc, auc_w = agg.get("auc", math.nan), agg.get("auc_worst", math.nan)
-    sens = agg.get("sensitivity", math.nan)
+        # Re-emit only weighted_and_worst's per-practice lines, not Flower's INFO chatter.
+        for line in buf.getvalue().splitlines():
+            if "practice" in line or "suppressed" in line:
+                print(line)
+
+    auc = metrics.get("auc", math.nan)
+    auc_w = metrics.get("auc_worst", math.nan)
+    sens = metrics.get("sensitivity", math.nan)
     print(f"  round {rnd:>2}: AUROC={auc:.3f} (worst practice {auc_w:.3f})  sensitivity={sens:.3f}")
-    return agg
+    return metrics
 
 
 def _load_frames(num_practices: int, config: dict, clinics_dir) -> tuple[list, str]:
@@ -203,22 +220,54 @@ def _load_frames(num_practices: int, config: dict, clinics_dir) -> tuple[list, s
     """
     if clinics_dir is not None:
         frames = load_clinic_frames(None if clinics_dir is True else clinics_dir)
-        return frames, f"on-disk clinics (data/clinics, {len(frames)} practices)"
+        return frames, f"on-disk clinics ({len(frames)} practices)"
     seed = int(config["seed"])
     frames = [
         load_partition(i, num_practices, alpha=float(config["alpha"]),
                        iid=bool(config["iid"]), seed=seed)
         for i in range(num_practices)
     ]
-    return frames, f"partitioned CSV ({num_practices} practices, alpha={config['alpha']} iid={config['iid']})"
+    return frames, (
+        f"partitioned CSV ({num_practices} practices, alpha={config['alpha']} iid={config['iid']})"
+    )
 
 
 def run_simulation(
-    num_practices: int, num_rounds: int, quiet: bool, *, clinics_dir=None, **overrides
+    num_practices: int,
+    num_rounds: int,
+    quiet: bool,
+    *,
+    clinics_dir=None,
+    protocol: str | None = None,
+    **overrides,
 ) -> list[dict]:
+    """Run one federation.
+
+    `protocol=None` runs the production model path — sklearn `logreg`/`mlp` under `FedAvg`, or
+    `xgboost` under `FedXgbBagging`. Passing a `protocol` runs the logistic-regression protocol
+    benchmark instead, where every comparator shares one local learner so only the protocol varies.
+    """
     config = {**DEFAULT_CONFIG, **overrides}
     model = str(config["model"])
     frames, source = _load_frames(num_practices, config, clinics_dir)
+
+    if protocol == "fedxgb":
+        # The tree protocol: a different model class, so it runs the FedXgbBagging path directly.
+        print(
+            f"Flower protocol=fedxgb (FedXgbBagging) | model=xgboost source={source} "
+            f"rounds={num_rounds}\n" + "-" * 64
+        )
+        return _run_fedxgb(frames, num_rounds, quiet, {**config, "model": "xgboost"})
+
+    if protocol is not None:
+        from models.protocols import run_protocol
+
+        print(
+            f"Flower protocol={protocol} (in-process) | model=logreg source={source} "
+            f"rounds={num_rounds}\n" + "-" * 64
+        )
+        return run_protocol(protocol, frames, num_rounds, quiet, config, _aggregate_and_print)
+
     strategy_name = "FedXgbBagging" if model == "xgboost" else "FedAvg"
     print(
         f"Flower {strategy_name} (in-process) | model={model} source={source} "
@@ -231,12 +280,19 @@ def run_simulation(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Flower federated CKD simulation (Ray-free)")
+    parser = argparse.ArgumentParser(description="Flower federated CKD simulation (in-process)")
     parser.add_argument("--practices", type=int, default=12)
     parser.add_argument("--rounds", type=int, default=20)
     parser.add_argument("--model", default="logreg", choices=["logreg", "mlp", "xgboost"])
+    parser.add_argument(
+        "--protocol", default=None, choices=list(PROTOCOL_CHOICES),
+        help=f"run the protocol benchmark instead of the production model path. Protocols: "
+             f"{', '.join(PROTOCOLS)}. Reference baselines: {', '.join(BASELINES)}. The "
+             f"logistic-regression comparators share one local learner so only the protocol varies.",
+    )
     parser.add_argument("--alpha", type=float, default=DEFAULT_CONFIG["alpha"])
     parser.add_argument("--local-epochs", type=int, default=DEFAULT_CONFIG["local-epochs"])
+    parser.add_argument("--seed", type=int, default=DEFAULT_CONFIG["seed"])
     parser.add_argument("--iid", action="store_true", help="IID even split instead of Dirichlet")
     parser.add_argument(
         "--clinics", action="store_true",
@@ -248,19 +304,33 @@ def main() -> None:
         help="directory of clinic CSVs to use (implies --clinics)",
     )
     parser.add_argument("--quiet", action="store_true", help="hide per-client metric lines")
+    parser.add_argument(
+        "--metric-privacy", action="store_true",
+        help="privacy layer L5: report per-practice metrics anonymously (see CLAUDE.md §9)",
+    )
+    parser.add_argument(
+        "--min-cohort-size", type=int, default=0,
+        help="privacy layer L5: suppress per-practice lines for cohorts smaller than this",
+    )
     args = parser.parse_args()
 
+    configure_metric_privacy(
+        enabled=args.metric_privacy, min_cohort_size=args.min_cohort_size
+    )
+
     # None = partition the flat CSV; True = default data/clinics/; a path = that clinics dir.
-    clinics_dir = args.clinics_dir if args.clinics_dir is not None else (True if args.clinics else None)
+    clinics_dir = args.clinics_dir if args.clinics_dir is not None else (args.clinics or None)
 
     run_simulation(
         num_practices=args.practices,
         num_rounds=args.rounds,
         quiet=args.quiet,
         clinics_dir=clinics_dir,
+        protocol=args.protocol,
         model=args.model,
         alpha=args.alpha,
         iid=args.iid,
+        seed=args.seed,
         **{"local-epochs": args.local_epochs},
     )
 

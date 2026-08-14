@@ -127,6 +127,45 @@ def generate_clinics(
     return clinics
 
 
+# Seed offset for the public cohort. Distinct from every clinic's derived seed (base+1000+cid), so
+# the public patients are guaranteed disjoint from every practice's panel.
+PUBLIC_SEED_OFFSET = 90_000
+
+
+def generate_public_cohort(
+    n: int = 400, *, base_seed: int = 42, class_balanced: bool = True
+) -> pd.DataFrame:
+    """The shared **unlabelled** public cohort `U` that FedMosaic co-trains over.
+
+    Built to the paper's specification (docs/2507.00259v3.pdf, "Experimental Setup"): a small,
+    class-balanced sample drawn IID from the *global* training distribution and disjoint from every
+    client dataset. "IID from the global distribution" here means drawn across all archetypes
+    rather than from any single clinic's population, so no practice's patients are over-represented.
+
+    The label column is returned so the harness can report an oracle diagnostic, but the protocol
+    itself never reads it — clients only ever see `U`'s features (see `MosaicPractice`).
+    """
+    rng = np.random.default_rng(base_seed + PUBLIC_SEED_OFFSET)
+    # Oversample, then trim: class-balancing discards rows, and CKD is the minority class.
+    per_archetype = max(1, int(np.ceil(n * 4 / len(ARCHETYPES))))
+    frames = [
+        _generate_patients(arch, per_archetype, np.random.default_rng(
+            base_seed + PUBLIC_SEED_OFFSET + i
+        ))
+        for i, arch in enumerate(ARCHETYPES)
+    ]
+    pool = pd.concat(frames, ignore_index=True).sample(frac=1.0, random_state=base_seed)
+
+    if not class_balanced:
+        return pool.head(n).reset_index(drop=True)
+
+    per_class = n // 2
+    positives = pool[pool[LABEL_COL] == 1].head(per_class)
+    negatives = pool[pool[LABEL_COL] == 0].head(n - per_class)
+    balanced = pd.concat([positives, negatives], ignore_index=True)
+    return balanced.sample(frac=1.0, random_state=rng.integers(1 << 31)).reset_index(drop=True)
+
+
 def combined_frame(clinics: list[tuple[int, str, pd.DataFrame]]) -> pd.DataFrame:
     """Stack all clinics into one frame with `clinic_id` / `clinic_archetype` columns."""
     frames = []
