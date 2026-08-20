@@ -1,0 +1,14 @@
+\setlength{\tabcolsep}{5pt}\small
+\begin{tabular}{llrrrr}
+    \toprule
+    & & AUROC & Worst practice & Sensitivity & Uplink bits/round \\
+    \midrule
+    FedProx & protocol & 0.808 $\pm$ 0.008 & 0.675 $\pm$ 0.054 & 0.703 & 352 \\
+    FedAvg (baseline) & baseline & 0.808 $\pm$ 0.008 & 0.675 $\pm$ 0.054 & 0.702 & 352 \\
+    FedMosaic & protocol & 0.800 $\pm$ 0.010 & 0.661 $\pm$ 0.068 & 0.709 & 3,600 \\
+    Local only (baseline) & baseline & 0.789 $\pm$ 0.008 & 0.495 $\pm$ 0.126 & 0.699 & 0 \\
+    FedXgbBagging & protocol & 0.729 $\pm$ 0.019 & 0.555 $\pm$ 0.045 & 0.599 & 21,521 \\
+    \midrule
+    \emph{Pooled ceiling} & ceiling & \emph{0.861} & --- & \emph{0.808} & --- \\
+    \bottomrule
+\end{tabular}

@@ -1,0 +1,62 @@
+\question{Does the SuperLink, or Flower Labs, at any point have isolated access to individual
+practices' contributions --- or is only the joint aggregate ever accessible?}
+\label{sec:isolation}
+\statusMethod
+
+\begin{shortanswer}
+This is the central question the assessment put to us, and it has two answers depending on one
+configuration switch. \textbf{On the default configuration, the aggregating party receives each
+practice's update in the clear, attributable to that practice.} Secure aggregation is not active by
+default, so counsel's premise --- ``as a result of the secure aggregation implementation'' --- did
+not describe the system as it stood. \textbf{With \texttt{secure-aggregation} enabled, it does:} the
+server can open only the sum, never one practice's contribution (\S\ref{sec:secagg}). This is
+therefore a decision to be taken, not an engineering limitation. Flower Labs, the company, receives
+nothing in either case (\S\ref{sec:flowerlabs}).
+\end{shortanswer}
+
+\subsection{Why the default answer is what it is}
+
+Two structural facts, both verified against the installed package rather than inferred from
+documentation.
+
+\paragraph{(a) Aggregation is the last step, not a property of transmission.}
+In Flower's deployment runtime the SuperLink is a message broker. SuperNodes push reply messages to
+its Fleet API and the ServerApp retrieves them. The aggregation function receives a \emph{list of
+individual messages}, each carrying that practice's own array record --- the raw parameter vector
+--- and only then combines them. Sending an update to the server does not aggregate it. There is a
+moment, by construction, at which the aggregating party holds $n$ separate vectors.
+
+\paragraph{(b) Each message is individually attributable.}
+Every Flower message carries \texttt{metadata.\allowbreak src\_\allowbreak node\_\allowbreak id}, and the framework's own aggregation
+code reads it. A practice's update is not an anonymous contribution to a pool: it arrives tagged
+with the identity of the SuperNode that sent it, which under the authentication scheme in the
+deployment guide is bound by public key to a named practice. The node registry that maps keys to
+admitted practices is centrally held.
+
+Together: at the moment of aggregation, the aggregating party holds \emph{this named practice's
+parameter vector, derived from this named practice's patients.}
+
+\subsection{What this does and does not imply}
+
+Two qualifications, pulling in opposite directions, and both belong here.
+
+\textbf{It is a configuration state, not an architectural limit.} Federated learning does not
+require the server to see individual contributions. The mechanisms that prevent it were switched off
+in a research baseline, deliberately, so that reference numbers stayed interpretable. They are now
+implemented and can be switched on.
+
+\textbf{But nothing in the default configuration supports a claim of anonymity at the aggregation
+level.} The conservative treatment the assessment recommends --- treating gradients as personal
+data, and potentially as health data --- is the technically correct treatment of the system running
+in its default configuration, and we do not argue against it on that configuration. What
+\S\ref{sec:secagg} and \S\ref{sec:noise} change is the set of configurations available to choose from.
+
+\subsection{A note on the two data paths}
+
+The assessment distinguishes a \emph{federated analytics} path carrying aggregated indicator vectors
+from an \emph{AI training} path carrying gradients, and assigns them different legal prospects. It
+is worth recording that \textbf{this distinction is not an architectural boundary in Flower}: the
+term ``analytics'' does not occur anywhere in the installed package, which offers one message API
+and one strategy interface. Both paths would be the same mechanism --- a client returning a record
+to a server through the SuperLink --- and therefore the two structural facts above apply to the
+analytics path unchanged. \S\ref{sec:aggdisclosure} develops what \emph{does} genuinely differ.

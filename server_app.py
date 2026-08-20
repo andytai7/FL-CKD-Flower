@@ -14,8 +14,11 @@ protect) while dropping the identity that makes it re-identifying.
 from __future__ import annotations
 
 import math
+from logging import INFO
 
 from flwr.app import ArrayRecord, ConfigRecord, Context, MetricRecord, RecordDict
+from flwr.common.logger import log
+from flwr.compat.common.recorddict_compat import arrayrecord_to_parameters
 from flwr.serverapp import Grid, ServerApp
 from flwr.serverapp.strategy import FedAvg
 
@@ -105,6 +108,10 @@ def main(grid: Grid, context: Context) -> None:
     model.initialize(NUM_FEATURES)
     initial_arrays = ArrayRecord(model.get_parameters())
 
+    if bool(rc.get("secure-aggregation", False)):
+        _run_secure_aggregation(grid, context, initial_arrays, num_rounds)
+        return
+
     strategy = FedAvg(
         fraction_train=float(rc["fraction-fit"]),
         fraction_evaluate=1.0,
@@ -120,3 +127,94 @@ def main(grid: Grid, context: Context) -> None:
         num_rounds=num_rounds,
         train_config=ConfigRecord({"local-epochs": int(rc["local-epochs"])}),
     )
+
+
+def _run_secure_aggregation(grid: Grid, context: Context, initial_arrays, num_rounds: int) -> None:
+    """Privacy layer L3: run the round under SecAgg+, so the server can only open the sum.
+
+    This is the configuration that answers the question counsel put to the project — *does the
+    aggregating party ever hold one practice's update in isolation?* Under SecAgg+ it does not:
+    each practice masks its update with pairwise secrets that cancel only once enough contributions
+    are combined, so the server obtains the aggregate and never an individual vector.
+
+    **Why this is a second code path rather than a flag.** In flwr 1.33 SecAgg+ ships only in the
+    legacy namespaces: `secaggplus_mod` is absent from `flwr.clientapp.mod`, and
+    `SecAggPlusWorkflow.__call__` demands a `LegacyContext`, so it cannot compose with
+    `strategy.start()`. It is reachable — that is what this function does — by driving
+    `DefaultWorkflow` with a `LegacyContext` from inside this modern `ServerApp`. The client side
+    switches on the same `secure-aggregation` config key, and its handlers accept the legacy record
+    shape (`fitins.parameters`) as well as this project's `arrays` — see `client_app.py`.
+
+    Three limits that belong next to any claim made about this path:
+
+    1. **Semi-honest threat model.** The guarantee holds against a server that follows the protocol
+       but inspects what it receives. It is not a guarantee against a server that deviates — for
+       instance by running a round with a single practice, whose "aggregate" is that practice.
+       `min_fit_clients` below is the control that makes such a round fail rather than succeed.
+    2. **Participation stays visible.** The server always learns which practices took part, and the
+       aggregate. Only the individual contribution is hidden.
+    3. **The aggregate is still model parameters.** SecAgg+ answers who may see one practice's
+       update; it does not by itself make the released model anonymous. That is what DP and the
+       leakage audit are for.
+
+    It also cannot protect the XGBoost path at all: `FedXgbBagging` transmits serialized decision
+    trees, and there is no numeric vector to mask. A SecAgg-protected deployment is necessarily a
+    logistic-regression deployment.
+    """
+    from flwr.server import LegacyContext, ServerConfig
+    from flwr.server.strategy import FedAvg as LegacyFedAvg
+    from flwr.server.workflow import DefaultWorkflow, SecAggPlusWorkflow
+
+    rc = context.run_config
+    num_practices = int(rc["num-practices"])
+    num_shares = int(rc.get("secagg-num-shares", 3))
+    threshold = int(rc.get("secagg-reconstruction-threshold", 2))
+
+    log(
+        INFO,
+        "SecAgg+ enabled: %s shares, reconstruction threshold %s, %s practices required per round",
+        num_shares,
+        threshold,
+        num_practices,
+    )
+
+    legacy = LegacyContext(
+        context=context,
+        config=ServerConfig(num_rounds=num_rounds),
+        strategy=LegacyFedAvg(
+            fraction_fit=float(rc["fraction-fit"]),
+            fraction_evaluate=1.0,
+            # A round with too few practices would defeat the masking, so it must not be allowed
+            # to run at all. This is the mitigation for limit (1) above.
+            min_fit_clients=num_practices,
+            min_evaluate_clients=1,
+            min_available_clients=num_practices,
+            initial_parameters=arrayrecord_to_parameters(initial_arrays, keep_input=True),
+            evaluate_metrics_aggregation_fn=_legacy_weighted_and_worst,
+        ),
+    )
+
+    workflow = DefaultWorkflow(
+        fit_workflow=SecAggPlusWorkflow(
+            num_shares=num_shares,
+            reconstruction_threshold=threshold,
+        )
+    )
+    workflow(grid, legacy)
+
+
+def _legacy_weighted_and_worst(results: list[tuple[int, dict]]) -> dict:
+    """`weighted_and_worst` for the legacy strategy's aggregation signature.
+
+    The legacy path hands `[(num_examples, metrics), ...]` rather than reply RecordDicts, so this
+    adapts the shape and delegates. The dual-level policy itself (CLAUDE.md §0 rule 5) — global
+    sample-weighted mean plus worst practice, and the L5 disclosure controls — is defined once, in
+    `weighted_and_worst`, and is not duplicated here.
+    """
+    records = [
+        RecordDict({"metrics": MetricRecord({"num-examples": float(n), **{
+            k: float(v) for k, v in m.items()
+        }})})
+        for n, m in results
+    ]
+    return dict(weighted_and_worst(records))

@@ -1,0 +1,96 @@
+\question{Where can noise be added, and what does each placement actually protect?}
+\label{sec:noise}
+\statusMeasured
+
+\begin{shortanswer}
+This is the single most important technical distinction in this report. \textbf{Central DP does not
+answer the central question.} Its noise is applied by the server \emph{as it aggregates}, so the
+server necessarily receives every practice's un-noised update first; it constrains what can be
+inferred from the published model, not what the aggregating party sees. Only \textbf{local DP} ---
+noise added inside the practice's own SuperNode, before transmission --- changes that, and it is now
+implemented and measured. It is expensive: at a genuinely meaningful budget the worst practice falls
+to \LocalWorstOne{}, below the \LocalWorst{} it achieves by not collaborating at all.
+\end{shortanswer}
+
+\subsection{Three placements, two of which change what the server receives}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabular}{lp{4.0cm}p{3.4cm}l}
+    \toprule
+    Mechanism & Where the noise is applied & Server still sees the individual update? & Status \\
+    \midrule
+    Central DP & Server, \emph{during} aggregation & \textbf{Yes --- un-noised} & measured \\
+    Local DP & \textbf{Inside the SuperNode, before transmission} & \textbf{No --- noised at source} & measured \\
+    Secure aggregation & Cryptographic masking across practices & No --- only the sum & implemented \\
+    \bottomrule
+  \end{tabular}
+  \caption{Only the second and third change what the aggregating party receives. This distinction is
+  easy to lose and it is the crux of the assessment's central question.}
+  \label{tab:placements}
+\end{table}
+
+\subsection{A naming trap that inverts the answer}
+
+Flower also ships a strategy named \texttt{DifferentialPrivacyClientSideFixedClipping}. Its own
+documentation describes it as \emph{``central DP with client-side fixed clipping''}: only the
+\textbf{clipping} moves to the client, while the \textbf{noise is still added by the server}. A
+reviewer scanning the API for ``client-side DP'' would conclude the server no longer sees un-noised
+updates, and would be wrong. We flag it explicitly because the mistake is natural and the
+consequence is a false statement to a regulator.
+
+The mechanism that does what its name suggests is the local DP modifier, which clips the update and
+adds Gaussian noise with standard deviation
+$\sigma = \text{sensitivity} \cdot \sqrt{2\ln(1.25/\delta)}\,/\,\varepsilon$
+inside the SuperNode. It is parameterised by $(\varepsilon, \delta)$ directly rather than by a raw
+noise scale.
+
+\subsection{What local DP costs, measured}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Local DP: noise added inside the SuperNode. $\varepsilon$ is the modifier's own per-round
+  parameter; the composed column is the budget over \DPRounds{} rounds from the same accountant used
+  in \S\ref{sec:budget}. \NumSeeds{} seeds, mean $\pm$ s.d.}
+  \input{tables/dp_local}
+  \label{tab:dplocal}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{dp_tradeoff}
+  \caption{Utility against budget, both mechanisms on one scale. Stronger privacy is to the right.
+  The gap between the curves is the price of the server never holding an individual update.}
+  \label{fig:dp}
+\end{figure}
+
+The comparison that matters is at matched budget. At a composed $\varepsilon$ near
+\EpsAtSigmaOne{}, central DP holds global AUROC at \AUCAtSigmaOne{} with worst practice
+\WorstAtSigmaOne{}; local DP at a comparable \LocalEpsFive{} reaches only \LocalAUCFive{} and
+\LocalWorstFive{}. Roughly \textbf{\LocalVsCentralAUCGap{} AUROC and \LocalVsCentralWorstGap{} worst-practice}
+is the measured price.
+
+The reason is structural, not incidental. Under local DP each of the \NumPractices{} practices adds
+\emph{independent} noise, so the noise entering the aggregate grows with the number of practices
+rather than being added once. Averaging reduces it, but only as $1/\sqrt{n}$ against a noise budget
+that each practice must satisfy alone.
+
+\subsection{The finding the consortium needs to act on}
+
+At $\varepsilon \approx \LocalEpsOne{}$ --- the first genuinely defensible budget in either table
+--- local DP takes global AUROC to \LocalAUCOne{} and the worst practice to \LocalWorstOne{}. A practice that trains entirely alone
+reaches \LocalWorst{}. \textbf{At this cohort size, local DP at a meaningful budget produces a model
+worse than not collaborating}, which would defeat the project's premise.
+
+This is a finding, not a failure of the implementation: the mechanism works, and what it reveals is
+that ten practices totalling \NumPatients{} patients is too little population to hide an individual
+in. The lever is cohort size --- the funded pilot's twenty-five practices --- and it should be
+surfaced now rather than at Milestone~4. Secure aggregation, whose cost is bandwidth and coordination
+rather than accuracy, carries much more of the load at this scale.
+
+\begin{sidenote}{Not yet implemented}
+FedMosaic specifies its own per-round DP construction --- an XOR mechanism on the label matrix and
+Gaussian noise on the expertise vector. This test bed does not implement it, so FedMosaic's privacy
+case here rests on payload shape alone (\S\ref{sec:payload}), not on a formal guarantee.
+\end{sidenote}

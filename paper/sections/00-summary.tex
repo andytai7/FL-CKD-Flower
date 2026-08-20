@@ -1,0 +1,127 @@
+\section*{Scope, and what changed since the assessment}
+\addcontentsline{toc}{section}{Scope, and what changed since the assessment}
+
+The preliminary legal assessment of 10 August 2026 put one central technical question to this work
+package, and listed four items under GDPR Art.~4(1) \cite{gdpr} as \emph{not yet conclusively
+documented}: the privacy budget and DP configuration; the number and size of participating cohorts;
+the training and aggregation configuration; and the administrative access, logging and export
+capabilities on the SuperLink. It further noted that the effectiveness of the protective mechanisms
+had not been demonstrated by any documented anonymisation or re-identification test.
+
+Rather than document those gaps, we closed the ones within our control and then wrote this report
+against the resulting system. Since the assessment:
+
+\begin{itemize}
+  \item \textbf{Secure aggregation is implemented} and verified end-to-end, so the answer to the
+        central question is now a configuration choice rather than a limitation (\S\ref{sec:secagg}).
+  \item \textbf{Noise at the practice is implemented and measured} --- the only mechanism that
+        changes what the aggregating party receives (\S\ref{sec:noise}).
+  \item \textbf{The privacy budget is now computed by a standard accountant} rather than by a
+        hand-rolled bound that was, at low noise, not a valid bound at all (\S\ref{sec:budget}).
+  \item \textbf{A membership-inference audit exists} and reports attack results against the released
+        model (\S\ref{sec:anontest}).
+  \item \textbf{The direct identifier is gone} from the practice export, and per-practice metric
+        logging is anonymised by default (\S\ref{sec:sidechannels}).
+\end{itemize}
+
+\paragraph{What this report is.} \texttt{FL-CKD-Flower} is the \textbf{methodology test bed} for
+FLIP-IT. No live deployment exists, no real patient data has ever entered it, and every measurement
+below comes from \NumPractices{} synthetic practices totalling \NumPatients{} generated patients.
+The \emph{method} is therefore described definitively --- that is what counsel needs in order to
+assess it --- while \emph{measurements} are labelled as test-bed evidence. The status chip on each
+section keeps the two apart, and \S\ref{sec:realdata} states explicitly which conclusions survive the
+move to real practice data and which do not.
+
+\paragraph{What this report is not.} It is not legal advice, and it does not conclude whether a
+gradient is personal data. That is counsel's determination; this document supplies the technical
+facts it rests on.
+
+\subsection*{Answers at a glance}
+
+\begin{longtable}{p{0.36\textwidth}p{0.44\textwidth}p{0.12\textwidth}}
+\toprule
+\textbf{Question} & \textbf{Answer} & \textbf{Status} \\
+\midrule
+\endhead
+Does the SuperLink ever hold one practice's update in isolation? (\S\ref{sec:isolation})
+  & On the default configuration, yes --- in the clear and attributable. Under secure aggregation,
+    no. It is a configuration state, not an architectural limit.
+  & Method \\
+\addlinespace
+Does Flower Labs receive anything? (\S\ref{sec:flowerlabs})
+  & No. The SuperLink is self-hosted; the company has no access path. One CLI default has been
+    removed as a precaution.
+  & Method \\
+\addlinespace
+Is secure aggregation reachable? (\S\ref{sec:secagg})
+  & Yes, and it is now built and verified. Semi-honest threat model; participation stays visible.
+  & Method \\
+\addlinespace
+Where can noise be added, and what does each placement protect? (\S\ref{sec:noise})
+  & Central DP constrains the published model but leaves the server seeing un-noised updates. Only
+    local DP changes that --- and it is expensive.
+  & Measured \\
+\addlinespace
+What is the privacy budget? (\S\ref{sec:budget})
+  & $\varepsilon = \EpsAtSigmaTwo$ at $\sigma = 2.0$ over \DPRounds{} rounds, by an RDP accountant.
+    The previously circulated figures were invalid, not merely loose.
+  & Measured \\
+\addlinespace
+How is $\varepsilon$ reduced without losing accuracy? (\S\ref{sec:reduce})
+  & Fewer rounds --- convergence is reached by round~10, so halving the round count halves the
+    budget for nothing. Then more practices.
+  & Measured \\
+\addlinespace
+Can aggregated results be de-aggregated? (\S\ref{sec:aggdisclosure})
+  & For the training path, addressed. For the analytics path the structural answers carry over, but
+    the disclosure-control questions need that component's indicator specification.
+  & Method \\
+\addlinespace
+Does the system disclose anything outside the model path? (\S\ref{sec:sidechannels})
+  & It did, in two places. Both are now closed by default.
+  & Method \\
+\addlinespace
+Does federation actually work? (\S\ref{sec:works})
+  & Within \CeilingGapAbs{} AUROC of the pooled ceiling, and it lifts the worst practice by
+    \WorstGain{}. The benefit is equity, not average accuracy.
+  & Measured \\
+\addlinespace
+Has anonymisation been demonstrated by test? (\S\ref{sec:anontest})
+  & Partly. Membership inference finds no usable signal --- even with no DP --- and the positive
+    control confirms the attack works. Two of the three attack families EDPB names remain unbuilt.
+  & Measured \\
+\addlinespace
+What is actually configured on the SuperLink? (\S\ref{sec:outside})
+  & Unanswerable here. We document the full capability surface; the operator's choices are not ours
+    to state.
+  & Deployment \\
+\bottomrule
+\end{longtable}
+
+\subsection*{Where each concern is answered}
+
+\begin{longtable}{p{0.50\textwidth}p{0.42\textwidth}}
+\toprule
+\textbf{Raised in the assessment} & \textbf{Answered in} \\
+\midrule
+\endhead
+Central open technical question --- isolated access to individual contributions
+  & \S\ref{sec:isolation}, \S\ref{sec:secagg}, \S\ref{sec:flowerlabs} \\
+Art.~4(1) item 1 --- privacy budget $\varepsilon$/$\delta$ and DP configuration
+  & \S\ref{sec:noise}, \S\ref{sec:budget}, \S\ref{sec:reduce}, App.~\ref{sec:config} \\
+Art.~4(1) item 2 --- number and size of participating cohorts
+  & \S\ref{sec:works}, App.~\ref{sec:config} \\
+Art.~4(1) item 3 --- training and aggregation configuration
+  & \S\ref{sec:method}, App.~\ref{sec:config} \\
+Art.~4(1) item 4 --- administrative access, logging, export on the SuperLink
+  & \S\ref{sec:outside} (capability surface documented; operator configuration out of scope) \\
+No documented anonymisation or re-identification test
+  & \S\ref{sec:anontest} \\
+Gradients may retain training-set information
+  & \S\ref{sec:payload}, \S\ref{sec:anontest} \\
+Analytics path --- cell counts, suppression, de-aggregation, repeated analyses
+  & \S\ref{sec:aggdisclosure} (structural answers; indicator spec required) \\
+Art.~26/28 role allocation, DPIA, AI Act
+  & \S\ref{sec:outside} \\
+\bottomrule
+\end{longtable}

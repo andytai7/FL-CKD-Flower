@@ -1,0 +1,87 @@
+\question{Does the method work at all --- what does federation buy, and against what ceiling?}
+\label{sec:works}
+\statusMeasured
+
+\begin{shortanswer}
+Federation reaches \BestFedAUC{} AUROC against a pooled-data ceiling of \CeilingAUC{} --- a gap of
+\CeilingGapAbs{} --- without any practice sharing a patient row. But the average is not where the
+benefit lies. A practice training alone reaches \LocalAUC{} on average while its worst member
+manages \LocalWorst{}, which is no better than a coin flip; federation lifts that worst practice to
+\BestFedWorst{}, a gain of \WorstGain{}. \textbf{The benefit is equity, not average accuracy}, which
+matters because the project's premise is that small practices should get a model they could not
+build alone.
+\end{shortanswer}
+
+\subsection{How the comparison is held fair}
+
+Only the protocol varies. Every comparator sees identical data, identical 80/20 splits, an identical
+feature set, an identical local optimiser and identical seeds; each figure is the mean over
+\NumSeeds{} seeds. Two reference points make the protocols interpretable, and neither is a protocol:
+
+\begin{itemize}
+  \item \textbf{The pooled ceiling} --- one model trained on every practice's data together. Reality
+        forbids it; it is the upper bound federation is trying to reach, and it has no
+        worst-practice figure by construction, because pooling destroys the practice boundary the
+        measure is defined over.
+  \item \textbf{Local-only} --- each practice trains on its own rows, keeps its own model, and is
+        scored on its own held-out rows. This is the honest ``what if we never collaborated'' floor.
+\end{itemize}
+
+Two comparisons in the table are deliberately not like-for-like, and reading them as such would
+mislead. The tree-based protocol is a different \emph{model class}, reported alongside rather than
+head-to-head. And the personalised methods produce \NumPractices{} different models, each scored on
+its own practice's patients, whereas the weight-sharing protocols produce a single global model
+scored on everyone --- personalisation is allowed to specialise, so it is measuring something
+slightly different.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Accuracy at \HeadlineRound{} rounds, \NumSeeds{} seeds, mean $\pm$ s.d.
+  \NumPractices{} non-IID practices, \NumPatients{} patients.}
+  \input{tables/accuracy}
+  \label{tab:accuracy}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{headline}
+  \caption{Global (solid) and worst-practice (pale) AUROC. The gap between the two bars is the
+  inequality the project exists to reduce; note how much wider it is for local-only training.}
+  \label{fig:headline}
+\end{figure}
+
+\subsection{The cohort}
+
+\begin{table}[htbp]
+  \centering
+  \caption{The synthetic cohort: \NumPractices{} practices, \NumPatients{} patients, panels of
+  \PanelMin{}--\PanelMax{}, CKD prevalence \PrevMin{}--\PrevMax{}. This answers the assessment's
+  second documented item for the test bed; the pilot's figures will differ (\S\ref{sec:realdata}).}
+  \input{tables/cohort}
+  \label{tab:cohort}
+\end{table}
+
+The practices are non-IID in three ways simultaneously --- covariate shift, label shift and quantity
+shift. A \PanelMin{}-patient practice at \PrevMin{} prevalence is a fundamentally different
+estimation problem from a \PanelMax{}-patient practice at \PrevMax{}. That is what makes naive
+averaging hard, and it is why the worst-practice column moves so much more than the mean.
+
+\subsection{The falsification test}
+
+A result that only ever confirms is not evidence. Every comparator is therefore also run on a
+signal-free dataset --- the same pipeline, the same protocols, but a placeholder table whose maximum
+absolute feature--label correlation is \NegControlMaxCorr{}. Anything meaningfully above 0.5 there is a bug, not a
+finding.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Negative control. The highest AUROC any comparator achieves on signal-free data is
+  \NegControlMax{}, against a pooled ceiling of \NegControlCeiling{}. Nothing found structure that
+  is not there.}
+  \input{tables/negcontrol}
+  \label{tab:negcontrol}
+\end{table}
+
+The test passes: no protocol manufactures signal. This is worth recording for counsel because it
+bears on whether the headline numbers can be trusted at all --- the same code, run on data with
+nothing in it, reports nothing.

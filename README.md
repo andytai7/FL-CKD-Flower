@@ -23,8 +23,11 @@ with Flower isn't a candidate ([CLAUDE.md §0](CLAUDE.md) rule 2).
 ## Results at a glance
 
 Full write-up: **[docs/REPORT.md](docs/REPORT.md)** · privacy architecture:
-**[docs/PRIVACY.md](docs/PRIVACY.md)** · deployment: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** ·
-counsel's technical question: **[docs/LEGAL-TECHNICAL-ANSWER.md](docs/LEGAL-TECHNICAL-ANSWER.md)**
+**[docs/PRIVACY.md](docs/PRIVACY.md)** · deployment: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**
+
+**The answer to counsel's questions is the Technical Expert Report in [`paper/`](paper/)** — one
+section per question, built from a single pinned run (`./scripts/paper.sh`). It supersedes
+`docs/LEGAL-TECHNICAL-ANSWER.md`, which is retained but marked superseded.
 
 The reproducible experiment, with charts, is
 [`notebooks/01_explore_and_baselines.ipynb`](notebooks/01_explore_and_baselines.ipynb).
@@ -83,7 +86,13 @@ uv run ckd-simulate --help                  # all flags
 
 uv run ckd-baseline --model all --clinics   # pooled ceiling on the SAME data
 uv run ckd-benchmark --rounds 20            # full protocol benchmark -> results/
-uv run ckd-privacy --seeds 42 43 44 45 46   # DP sweep + SecAgg probe -> results/
+uv run ckd-privacy --seeds 42 43 44 45 46   # central + local DP sweeps, SecAgg probe -> results/
+uv run ckd-audit   --seeds 42 43 44 45 46   # membership-inference leakage audit -> results/
+
+uv run flwr run . --run-config "secure-aggregation=true"   # SecAgg+: server sees only the sum
+uv run flwr run . --run-config "local-dp-epsilon=5.0"      # noise inside the SuperNode
+
+./scripts/paper.sh --recompute              # rebuild the expert report's figures/tables/numbers
 
 uv run flwr run .                           # full Flower stack (Ray engine, real ServerApp/ClientApp)
 ```
@@ -136,7 +145,9 @@ Two execution modes:
 | `client_app.py` / `server_app.py` | Flower `ClientApp` / `ServerApp` on the 1.33 Message API |
 | `simulate.py` | In-process runner over Flower's real strategies → `ckd-simulate` |
 | `benchmark.py` | Protocol benchmark → `ckd-benchmark` → `results/benchmark.json` |
-| `privacy.py` | DP sweep + SecAgg+ feasibility probe → `ckd-privacy` |
+| `privacy.py` | Central + local DP sweeps, RDP accountant, SecAgg+ probe → `ckd-privacy` |
+| `audit.py` | Membership-inference leakage audit (T2.5 / layer L6) → `ckd-audit` |
+| `paper/` | The Technical Expert Report (LaTeX). `make_paper.py` generates every figure, table and inline number from one run |
 | `centralized.py` | Pooled-data ceilings → `ckd-baseline` |
 | `messages.py` | The Flower `Message` shapes the in-process runners exchange |
 | `task.py` | Local scaler, imbalanced-data metrics, T2.5 fairness metrics |
@@ -144,7 +155,7 @@ Two execution modes:
 | `models/` | `logreg`, `mlp` (FedAvg) and `fedxgb` (FedXgbBagging) |
 | `models/protocols/` | The protocol benchmark, incl. `fedmosaic.py` (a Flower `Strategy` subclass) |
 | `extract_features.sql` | Canonical feature contract for the **real** Tomedo→PostgreSQL export |
-| `docs/` | `REPORT.md`, `PRIVACY.md`, `DEPLOYMENT.md`, `LEGAL-TECHNICAL-ANSWER.md` + source PDFs |
+| `docs/` | `REPORT.md`, `PRIVACY.md`, `DEPLOYMENT.md`, `LEGAL-TECHNICAL-ANSWER.md` (superseded) + source PDFs |
 | `notebooks/` | Interactive federation walkthrough |
 
 ---

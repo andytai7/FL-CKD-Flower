@@ -1,0 +1,57 @@
+\question{What crosses the practice boundary, and what does it contain?}
+\label{sec:payload}
+\statusMeasured
+
+\begin{shortanswer}
+On the recommended configuration, \UplinkLogreg{} bits per practice per round: eleven coefficients
+and an intercept. That vector is fitted to this practice's patients and is the object that
+gradient-inversion research targets, so treating it as carrying information about those patients is
+correct. The two alternatives are materially worse: the tree-based protocol transmits
+\UplinkXGB{} bits per round whose split thresholds are \emph{literal patient feature values}, which
+is the highest-disclosure payload in the comparison and is also the one secure aggregation cannot
+protect.
+\end{shortanswer}
+
+\begin{table}[htbp]
+  \centering
+  \caption{What each protocol places on the wire, per practice per round. Measured in the test bed.}
+  \input{tables/payload}
+  \label{tab:payload}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.82\textwidth]{payload}
+  \caption{Uplink volume per practice per round, log scale. The tree-based protocol costs roughly
+  sixty times the coefficient vector and discloses more per bit.}
+  \label{fig:payload}
+\end{figure}
+
+\subsection{Why the payload's \emph{shape} matters, not just its size}
+
+The three protocols differ in kind, not only in degree:
+
+\begin{itemize}
+  \item \textbf{Coefficients} (FedProx, FedAvg) are an aggregate summary: each number is a
+        partial derivative averaged over hundreds of patients. Inverting them to recover an
+        individual is the subject of the gradient-leakage literature \cite{zhu2019leakage}.
+  \item \textbf{Serialized decision trees} (FedXgbBagging) are categorically different. A split
+        threshold such as \emph{age $\le$ 67.5} is derived directly from patient values present in
+        that practice's data. There is no averaging step to hide behind.
+  \item \textbf{Predictions on a public cohort} (FedMosaic \cite{fedmosaic}) are different again.
+        The practice transmits opinions about patients who are \emph{already public}, plus an
+        expertise weight. No parameter vector exists for the server to invert.
+\end{itemize}
+
+\subsection{How much can a coefficient vector reveal?}
+
+The gradient-inversion results counsel's assessment alludes to were established against deep
+networks with millions of parameters, where a single update can carry enough information to
+reconstruct an input image. The object here is different by orders of magnitude: \textbf{eleven
+parameters}, averaged over a practice's entire training set, in a \emph{convex} optimisation whose
+optimum is a property of the dataset as a whole rather than of any record in it.
+
+That is an argument for lower risk, and it should be stated as an argument --- not as a conclusion.
+It is exactly the kind of claim EDPB Opinion 28/2024 \cite{edpb2024ai} declines to accept without
+testing, which is why \S\ref{sec:anontest} tests it rather than asserting it. The measured result
+there is consistent with this reasoning, and its limits are stated with it.

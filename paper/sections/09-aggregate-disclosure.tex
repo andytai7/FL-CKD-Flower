@@ -1,0 +1,78 @@
+\question{Can aggregated results be de-aggregated, or reconstructed from repeated analyses?}
+\label{sec:aggdisclosure}
+\statusMethod
+
+\begin{shortanswer}
+For the AI training path the exposure is bounded and addressed: what leaves a practice is a single
+coefficient vector per round, protected by the mechanisms above. For the \emph{federated analytics}
+path, the structural answers carry over unchanged --- but the disclosure-control questions do not,
+because they depend on which indicators are computed, at what granularity, and how often. That
+specification lives with another work package and we cannot answer for it. What we can say is that
+``analytics'' confers no automatic anonymity: an aggregate reaching the server is aggregated
+\emph{across patients within one practice}, not across practices, and it arrives attributable.
+\end{shortanswer}
+
+\subsection{The two paths are one mechanism}
+
+The assessment treats the analytics path (aggregated indicator vectors) and the training path
+(gradients) as if they had different technical properties, and assigns them different legal
+prospects. It is worth recording precisely what does and does not follow.
+
+\textbf{``Federated analytics'' is not an architectural boundary in the software we use.} The term
+appears nowhere in Flower \FlwrVersion{}; the package offers one message API and one strategy
+interface. The term itself is a real and standard one --- it originates with Google
+\cite{fedanalytics} and describes computing aggregate statistics over decentralised data without
+collecting it --- and it fairly describes the indicator path. But in implementation, both paths are
+the same mechanism: a client returning a record to a server through the SuperLink.
+
+Three consequences follow directly, and they are answers rather than deferrals:
+
+\begin{itemize}
+  \item \textbf{Who sees what is identical.} Aggregation is still the terminal step; messages still
+        carry their sender's identity; the contribution is still practice-attributable. An indicator
+        vector does not become anonymous by virtue of being called an aggregate --- it is aggregated
+        over the patients \emph{within} one practice, which is exactly the population in which small
+        cells become disclosive.
+  \item \textbf{Secure aggregation applies identically, and more cleanly.} An indicator vector is a
+        numeric vector, so it masks and sums without difficulty --- unlike the tree payload
+        (\S\ref{sec:secagg}).
+  \item \textbf{Differential privacy applies, and is \emph{easier} to reason about here.} A counting
+        query has sensitivity exactly 1 per patient, so the accountant is tight and standard. On the
+        training path the sensitivity is bounded only indirectly, by the clipping norm acting as a
+        proxy. The analytics path is the more tractable of the two for formal guarantees, not the
+        less.
+\end{itemize}
+
+\subsection{What genuinely differs --- and what it needs}
+
+The difference is the payload's \emph{semantics}, not its transport. A coefficient is a smooth
+function of hundreds of records; a count over a thin stratum can be one patient. Hence the controls
+the CheCKD opinion asks for --- minimum cell counts, primary and secondary suppression,
+$k$-anonymity --- which are meaningful for counts and largely meaningless for coefficients.
+
+The specifically difficult case counsel raises is \textbf{repeated or overlapping analyses}. Two
+queries differing by one predicate reveal the difference between them; a sequence of such queries can
+isolate an individual even when no single result violates a cell-count floor. Suppression alone does
+not defend against this, because each release passes its own test. Defending against it requires
+treating the sequence as a whole: a query log, a cumulative disclosure budget spent across releases,
+and refusal once it is exhausted.
+
+\textbf{This test bed implements no such query auditing}, because it implements no analytics path.
+Its metric-hygiene layer (\S\ref{sec:sidechannels}) applies a cell-count floor to per-practice metric
+lines, which is the primitive but not the system.
+
+\begin{sidenote}{For the analytics work package --- what we would need to answer this properly}
+We can apply the same accountant and a cell-suppression analysis to the analytics path, but not
+without its specification. Concretely:
+\begin{enumerate}[label=(\alph*)]
+  \item the list of indicators and their definitions;
+  \item the stratification variables and the finest granularity any release may use;
+  \item the query cadence --- how often indicators are recomputed and republished;
+  \item whether the same cohort is re-queried over time as it changes, which is what makes
+        differencing possible;
+  \item whether any cumulative disclosure budget is tracked across releases today, and if so how.
+\end{enumerate}
+With (a)--(e) we can state the minimum cell count and the composed budget the analytics path needs.
+Without them, this report answers only the architectural half, and counsel should read the
+disclosure-control half as open rather than as settled.
+\end{sidenote}

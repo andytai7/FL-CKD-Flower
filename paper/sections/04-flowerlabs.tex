@@ -1,0 +1,36 @@
+\question{Does Flower Labs, the company, receive anything?}
+\label{sec:flowerlabs}
+\statusMethod
+
+\begin{shortanswer}
+No. In the intended deployment the SuperLink is self-hosted on consortium infrastructure and Flower
+is open-source software running on that host; the company has no access path and receives nothing.
+One caveat was worth closing rather than explaining: the Flower CLI writes a default entry pointing
+at a Flower-operated endpoint into a freshly generated configuration file. It is inert unless
+explicitly invoked, but it is one word on a command line, so its removal is now a documented step on
+the practice-side go-live checklist.
+\end{shortanswer}
+
+\subsection{The configuration default, and why it was closed}
+
+A newly generated \texttt{\$HOME/.flwr/config.toml} contains, among the connection profiles:
+
+\begin{quote}\ttfamily
+[superlink.supergrid]\\
+address = "supergrid.flower.ai"
+\end{quote}
+
+Nothing routes there unless someone runs the deployment command naming that profile explicitly. But
+the gap between a self-hosted federation and transmission of model updates to a third party should
+not be a single word on a command line that a tired operator could type. The deployment procedure now
+requires removing the entry on every operator and practice machine and pinning the default profile to
+the consortium SuperLink, so that an omitted argument also cannot reach outside the consortium. It is
+cheap to do and easy to forget, which is why it is on a checklist rather than in prose.
+
+\subsection{The Letter of Intent}
+
+The Projektantrag \cite{projektantrag} records a Letter of Intent from FlowerAI. It concerns
+technical support and expertise. \textbf{It is not a data-processing arrangement and should not be
+relied on as one.} If any future configuration were to route data through infrastructure Flower Labs
+operates, that would be a new processing relationship requiring its own legal basis, and it is not
+what is planned.

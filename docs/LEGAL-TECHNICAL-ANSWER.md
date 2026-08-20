@@ -1,5 +1,24 @@
 # Preliminary technical answer to the FLIP-IT legal assessment
 
+> ## ⚠️ SUPERSEDED — do not circulate
+>
+> This document is retained for the record. It has been **superseded by the Technical Expert
+> Report** (`paper/`, build with `./scripts/paper.sh`), which answers the same questions against a
+> system that has since changed. Several statements below are no longer true:
+>
+> | This document says | Now |
+> |---|---|
+> | "Secure aggregation is not part of this code path" | **Implemented and verified end-to-end** — `secure-aggregation = true` ([PRIVACY.md §4](PRIVACY.md)) |
+> | Local DP is "available", cost "unmeasured" | **Measured** — and expensive; at a defensible ε the worst practice falls below the no-collaboration baseline ([PRIVACY.md §3](PRIVACY.md)) |
+> | ε "range from 48 to 969", basic composition | **Superseded by an RDP accountant.** The old figures were not merely loose — at low σ they were outside the range where the formula is valid at all |
+> | "No membership-inference testbed" | **Built** — `uv run ckd-audit` ([PRIVACY.md §5](PRIVACY.md)) |
+> | `extract_features.sql` exports `patientid` | **Removed** |
+> | Metric privacy "off by default" | **On by default** |
+>
+> The DP figures quoted below were also **irreproducible** for the reason given in
+> [PRIVACY.md §7](PRIVACY.md). Do not quote any ε from this document.
+
+
 **To:** Dr. Nicolas Conze (docport GmbH) / J. Flötotto (Jorzig & Partner)
 **Re:** "Central open technical question", preliminary legal assessment of 10 August 2026
 **Date:** 13 August 2026

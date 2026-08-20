@@ -1,0 +1,67 @@
+\question{What is the privacy budget, how is it accounted, and what does it cost?}
+\label{sec:budget}
+\statusMeasured
+
+\begin{shortanswer}
+At clipping norm 1.0 and $\delta = 10^{-5}$ over \DPRounds{} rounds, the budget ranges from
+effectively unbounded down to $\varepsilon = \EpsAtSigmaTwo{}$ at noise multiplier $\sigma = 2.0$,
+where global AUROC is \AUCAtSigmaTwo{}. These figures come from a R\'enyi-DP accountant. They
+supersede the figures circulated previously, which were computed by a hand-rolled composition that
+was not merely loose but --- at low noise --- \textbf{outside the range in which the underlying
+formula is valid at all}. The mechanism has not changed; only the accounting is now correct.
+\end{shortanswer}
+
+\subsection{How the budget is computed}
+
+Each round, every practice's update is clipped to a fixed norm $C = 1.0$, which bounds the influence
+any single contribution can have and therefore bounds the mechanism's sensitivity. Gaussian noise
+scaled by $\sigma C$ is then added. $\delta = 10^{-5}$ is chosen below $1/n$ for a cohort of
+\NumPatients{} patients, per the usual convention \cite{dwork2014dp}.
+
+Composing that over \DPRounds{} rounds is where the accounting choice bites. We use the R\'enyi-DP
+accountant \cite{mironov2017rdp} as implemented in Google's \texttt{dp\_accounting}
+\cite{dpaccounting}: it tracks the full R\'enyi divergence curve across rounds and converts to
+$(\varepsilon, \delta)$ once at the end, rather than paying a union bound every round. We use an
+independently maintained, widely reviewed implementation deliberately --- it is more defensible to a
+data-protection reviewer than arithmetic of our own.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Central DP: Flower's server-side fixed-clipping wrapper over federated averaging,
+  clipping norm 1.0, \NumPractices{} non-IID practices, \DPRounds{} rounds, \NumSeeds{} seeds.
+  The naive-bound column is the superseded accounting, shown for comparison only.}
+  \input{tables/dp_central}
+  \label{tab:dpcentral}
+\end{table}
+
+\subsection{Two things changed, and only one of them is ``tighter''}
+
+\paragraph{Where both are meaningful, the accountant is 2--4$\times$ tighter.}
+At $\sigma = 2.0$ over \DPRounds{} rounds the budget is $\varepsilon = \EpsAtSigmaTwo{}$, not the
+\EpsAtSigmaTwoNaive{} previously reported --- at identical noise and identical utility. Nothing about
+the protection changed; the earlier number simply overstated the loss.
+
+\paragraph{At low noise, the previous figures were not a bound at all.}
+The classical Gaussian-mechanism expression $\varepsilon_1 = \sqrt{2\ln(1.25/\delta)}/\sigma$ is
+valid only for $\varepsilon_1 \le 1$. Every row of the earlier table violated that badly --- at
+$\sigma = 0.1$ the per-round $\varepsilon_1$ alone is around 48. Those figures were therefore not
+conservative; they were outside the regime in which the formula asserts anything. This is why the
+low-noise rows now report a \emph{larger} $\varepsilon$ than before, which looks like a regression
+and is in fact a correction.
+
+\textbf{Consequence for counsel:} any $\varepsilon$ quoted from project documentation dated before
+this report should be re-checked. The current figures are reproducible from the stated seeds
+(Appendix~\ref{sec:repro}); the earlier ones were not, for the reason given there.
+
+\subsection{Reading the table honestly}
+
+The comfortable reading is that DP is nearly free --- at $\sigma \le 0.25$ the model loses
+essentially no accuracy. That reading is wrong, and the $\varepsilon$ column is why: those settings
+carry budgets in the hundreds, which is not a meaningful guarantee in any ordinary sense. The
+direction of travel is unforgiving. Pushing $\varepsilon$ down means pushing $\sigma$ up, and by
+$\sigma = 2.0$ the worst practice has fallen from \BestFedWorst{} to \WorstAtSigmaTwo{}.
+
+The cause is cohort size, not a defect in the mechanism. DP noise is calibrated to the influence of a
+single \emph{individual}, so the smaller the population, the more each patient must be obscured
+relative to the signal. \NumPatients{} patients across \NumPractices{} practices is very little
+population to hide in. \S\ref{sec:reduce} sets out what can be done about it.

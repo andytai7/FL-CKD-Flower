@@ -27,6 +27,7 @@ dependencies = [
     "pandas>=2.0.0",
     "numpy>=1.24.0",
     "xgboost>=2.0.0",
+    "dp-accounting>=0.6.0",
 ]
 
 [project.optional-dependencies]
@@ -53,13 +54,15 @@ ckd-clinics = "data.synthesize:main"
 ckd-benchmark = "benchmark:main"
 # Privacy layer measurement -> results/privacy.json. Run: uv run ckd-privacy
 ckd-privacy = "privacy:main"
+# Membership-inference leakage audit (T2.5 / privacy layer L6). Run: uv run ckd-audit
+ckd-audit = "audit:main"
 
 # Flat layout: data/ and models/ packages plus top-level app modules at the repo root.
 [tool.hatch.build.targets.wheel]
 include = [
     "data", "models",
     "client_app.py", "server_app.py", "task.py", "centralized.py", "simulate.py",
-    "messages.py", "benchmark.py", "privacy.py",
+    "messages.py", "benchmark.py", "privacy.py", "audit.py",
 ]
 # Editable installs: put the project root on sys.path (path-based) rather than enumerating
 # modules, so every top-level .py here is importable and newly added files are picked up reliably.
@@ -75,7 +78,10 @@ serverapp = "server_app:app"
 clientapp = "client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 20      # federation rounds
+num-server-rounds = 10      # federation rounds. Reduced from 20: the logistic protocols are
+                            # converged by ~round 10 (docs/REPORT.md), and every additional
+                            # round composes additional privacy loss. Halving the rounds
+                            # halves the composed epsilon at no measured accuracy cost.
 fraction-fit = 1.0          # fraction of practices training per round
 local-epochs = 2            # local partial_fit passes per round
 model = "logreg"            # flwr-run FedAvg app: logreg | mlp  (xgboost federates via FedXgbBagging
@@ -91,8 +97,26 @@ seed = 42
 data-source = "csv"
 
 # Privacy layer L5 (CLAUDE.md §9): anonymise per-practice metric lines / suppress small cohorts.
-metric-privacy = false
-min-cohort-size = 0
+# ON by default. Naming a practice alongside its cohort size and AUROC every round is itself a
+# disclosure to whoever reads the SuperLink logs, independently of the gradients. This is the
+# DEPLOYMENT default; the research runners (ckd-simulate / ckd-benchmark) keep their own flags and
+# still print the identified view, so baseline numbers stay interpretable.
+metric-privacy = true
+min-cohort-size = 20
+
+# Privacy layer L4-local (CLAUDE.md §9): clip + Gaussian-noise each practice's update INSIDE the
+# SuperNode, before transmission. This is the only mechanism that changes what the AGGREGATING PARTY
+# receives — central DP noises during aggregation, so the server sees every un-noised update first.
+# 0 = off. Utility cost at this cohort size is severe; measure with `uv run ckd-privacy` first.
+local-dp-epsilon = 0.0
+
+# Privacy layer L3 (CLAUDE.md §9): SecAgg+ — the server can open only the aggregate, never one
+# practice's update. OFF by default because it switches the run onto the legacy workflow (flwr 1.33
+# ships SecAgg+ only in the legacy namespace), which the protocol benchmark does not use.
+# The SuperNodes must be started with FLIPIT_SECAGG=1 to match — see docs/DEPLOYMENT.md.
+secure-aggregation = false
+secagg-num-shares = 3                 # Shamir shares per practice
+secagg-reconstruction-threshold = 2   # shares needed to recover a dropped practice's mask
 
 
 #######################################################################

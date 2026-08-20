@@ -8,7 +8,11 @@ Reproduce everything here with:
 
 ```bash
 uv run ckd-privacy --rounds 20 --seeds 42 43 44 45 46    # -> results/privacy.json
+uv run ckd-audit   --rounds 20 --seeds 42 43 44 45 46    # -> results/audit.json
 ```
+
+Both are **reproducible**: rerunning either reproduces the tables below exactly. That was not true
+before — see §7.
 
 ---
 
@@ -19,145 +23,217 @@ what is planned.
 
 | Layer | Mechanism | Protects against | Status |
 |---|---|---|---|
-| **L0** Minimisation | Drop direct identifiers at extraction; no patient id ever enters a feature frame | Direct re-identification | ⚠️ **Gap — see §2** |
+| **L0** Minimisation | Drop direct identifiers at extraction; no patient id ever enters a feature frame | Direct re-identification | ✅ **Closed — `patientid` no longer exported (§2)** |
 | **L1** Transport | TLS on SuperLink↔SuperNode and SuperLink↔`flwr` CLI | Network interception | ✅ Documented in [DEPLOYMENT.md](DEPLOYMENT.md) |
 | **L2** Identity | SuperNode public-key authentication; only registered practice keys admitted | A rogue node joining the federation | ✅ Documented in [DEPLOYMENT.md](DEPLOYMENT.md) |
-| **L3** Confidential aggregation | SecAgg+ — the server sees only the sum, never one practice's update | An honest-but-curious SuperLink operator | ⚠️ **Achievable, but only on the legacy path — see §4** |
-| **L4** Formal guarantee | Central DP: clipping + calibrated Gaussian noise | Reconstruction / membership inference from the released model | ✅ **Measured — see §3** |
-| **L5** Metric hygiene | Suppress or anonymise per-practice metric lines below a cohort floor | Re-identification through the dual-level logs | ✅ Implemented (`--metric-privacy`, `--min-cohort-size`) |
-| **L6** Audit | Fairness gaps by group; membership-inference testbed | Undetected bias / leakage (T2.5) | 🟡 Fairness implemented; MIA testbed **not yet built** |
+| **L3** Confidential aggregation | SecAgg+ — the server sees only the sum, never one practice's update | An honest-but-curious SuperLink operator | ✅ **Implemented and verified end-to-end (§4)** |
+| **L4** Formal guarantee | Central DP (server-side) and local DP (in-SuperNode): clipping + calibrated Gaussian noise | Reconstruction / membership inference from the released model | ✅ **Both measured (§3)** |
+| **L5** Metric hygiene | Suppress or anonymise per-practice metric lines below a cohort floor | Re-identification through the dual-level logs | ✅ **Implemented and ON by default** |
+| **L6** Audit | Fairness gaps by group; membership-inference testbed | Undetected bias / leakage (T2.5) | 🟡 **MIA built (§5)**; inversion + reconstruction still open |
 
 ---
 
-## 2. L0 — the identifier gap, stated plainly
+## 2. L0 — the identifier gap, closed
 
-[`extract_features.sql:342`](../extract_features.sql) selects `ep.patientid` into the per-practice
-export:
+[`extract_features.sql`](../extract_features.sql) §9 previously selected `ep.patientid` into the
+per-practice export. Nothing downstream used it — `data/loader.py` selects only `FEATURE_COLS` — but
+the **CSV on the practice's disk carried it**, which made that file personal data under DSGVO rather
+than a pseudonymous extract, and dragged it into the scope of every access-control and retention
+obligation.
 
-```sql
-SELECT
-    (SELECT val FROM stichtag)  AS t0,
-    ep.patientid,                        -- ← direct identifier
-    ep.alter_jahre,
-```
+**The column is now dropped.** If T4.2 later needs a stable join key across extractions, the
+replacement is a per-practice salted hash, decided deliberately — not the raw identifier restored.
 
-Nothing downstream uses it — `data/loader.py` selects only `FEATURE_COLS`, so it never reaches a
-model. But the **CSV on the practice's disk carries it**, which makes that file personal data under
-DSGVO rather than a pseudonymous extract, and drags it into the scope of every access-control and
-retention obligation.
+One residual channel is documented in the SQL rather than silently left: the export is still
+`ORDER BY ep.patientid`, so while the column is gone, **row order still follows it**. If patient ids
+are assigned chronologically, row position is a weak signal for relative enrolment order. Downstream
+code must not treat row position as information; `ORDER BY random()` removes the channel at the cost
+of reproducible extracts.
 
-**Fix before any real extraction run:** drop the column, or replace it with a per-practice salted
-hash if a stable join key is genuinely needed for the T4.2 data collection. This is a one-line SQL
-change and a legal-review item for Jorzig & Partner, not an engineering problem.
-
-The FHIR path is already clean: `data/fhir_loader.py` builds rows positionally and never carries a
+The FHIR path was already clean: `data/fhir_loader.py` builds rows positionally and never carries a
 patient identifier into the frame.
 
 ---
 
 ## 3. L4 — what Differential Privacy actually costs
 
+**Read §3.3 first if you read nothing else: central and local DP protect different things.**
+
+### 3.1 Central DP — noise applied by the server during aggregation
+
 Flower's real `DifferentialPrivacyServerSideFixedClipping` wrapped around `FedAvg`, clipping norm
-1.0, 10 non-IID practices, 20 rounds, **5 seeds** (each seed redraws both the local splits and the
-DP noise). Mean ± std of the final round:
+1.0, 10 non-IID practices, 20 rounds, **5 seeds**. Mean ± s.d. of the final round:
 
-| Noise σ | AUROC | Worst practice | ε upper bound | AUROC cost |
-|---:|---|---|---:|---:|
-| 0.00 | **0.808 ± 0.008** | 0.675 ± 0.054 | — | — |
-| 0.10 | 0.807 ± 0.008 | 0.674 ± 0.057 | 969 | −0.001 |
-| 0.25 | 0.807 ± 0.007 | 0.672 ± 0.052 | 388 | −0.001 |
-| 0.50 | 0.800 ± 0.010 | 0.670 ± 0.060 | 194 | −0.008 |
-| 1.00 | 0.788 ± 0.013 | 0.663 ± 0.027 | 97 | −0.020 |
-| 2.00 | 0.753 ± 0.029 | 0.566 ± 0.075 | 48 | −0.055 |
+| Noise σ | AUROC | Worst practice | ε (RDP) | naive bound | AUROC cost |
+|---:|---|---|---:|---:|---:|
+| 0.00 | **0.808 ± 0.008** | 0.675 ± 0.054 | — | — | — |
+| 0.10 | 0.808 ± 0.007 | 0.676 ± 0.056 | 1211.8 | 969 | −0.000 |
+| 0.25 | 0.807 ± 0.008 | 0.669 ± 0.054 | 244.0 | 388 | −0.001 |
+| 0.50 | 0.803 ± 0.011 | 0.681 ± 0.033 | 81.1 | 194 | −0.005 |
+| 1.00 | 0.794 ± 0.014 | 0.646 ± 0.061 | 30.1 | 97 | −0.014 |
+| 2.00 | 0.773 ± 0.017 | 0.608 ± 0.097 | **12.3** | 48 | −0.035 |
 
-**Read this the right way.** The comfortable reading is "DP is nearly free" — at σ ≤ 0.25 the model
-loses 0.001 AUROC. That reading is wrong, and the ε column is why.
+### 3.2 Local DP — noise applied inside the SuperNode, before transmission
 
-> ### ⚠️ The headline risk for MS4
+Flower's real `LocalDpMod`, same clipping norm, same seeds and rounds. Local DP is parameterised by
+(ε, δ) **per round**; the composed budget is reported by the same accountant so the two tables read
+on one scale.
+
+| ε per round | ε composed | AUROC | Worst practice | AUROC cost |
+|---:|---:|---|---|---:|
+| off | — | **0.808 ± 0.008** | 0.675 ± 0.054 | — |
+| 50 | 1283.4 | 0.806 ± 0.008 | 0.677 ± 0.044 | −0.002 |
+| 20 | 257.6 | 0.791 ± 0.017 | 0.650 ± 0.052 | −0.017 |
+| 10 | 85.0 | 0.768 ± 0.041 | 0.597 ± 0.061 | −0.040 |
+| 5 | 31.4 | 0.754 ± 0.009 | 0.574 ± 0.053 | −0.054 |
+| 1 | **4.3** | 0.627 ± 0.057 | **0.397 ± 0.130** | −0.181 |
+
+### 3.3 The comparison that matters
+
+> **Central DP does not answer the question the legal assessment asks.** Its noise is applied by
+> the server *as it aggregates*, so the server necessarily receives every practice's un-noised
+> update first. It constrains what can be inferred from the *published model*; it does not
+> constrain what the aggregating party sees. Only **local DP** changes that.
 >
-> Every ε in that table is **enormous**. A guarantee of ε ≈ 48 is not a privacy guarantee in any
-> meaningful sense; the usual target is single digits. The direction of travel is brutal: pushing ε
-> down means pushing σ up, and by σ = 2.0 the worst practice has already collapsed from 0.675 to
-> 0.566 — worse than several practices achieve training alone.
->
-> The cause is cohort size. ~3.5k patients across 10 practices is simply very little data to hide
-> in. DP noise is calibrated to the *individual*, so the smaller the cohort, the more each patient
-> must be obscured relative to signal.
->
-> **This needs to be surfaced to the consortium now, not at month 18.** The realistic levers are:
-> more practices (the funded pilot's 25 rather than today's 10), fewer rounds (each composition
-> costs budget), a tighter accountant, and accepting a larger ε with SecAgg+ carrying more of the
-> load.
+> ⚠️ Note also that flwr's `DifferentialPrivacyClientSideFixedClipping` does **not** close this gap
+> despite its name — its own docstring describes it as *"central DP with client-side clipping"*.
+> Only the clipping moves to the client; the noise is still added by the server.
 
-### About the ε numbers
+**And that protection is expensive.** At comparable composed budgets:
 
-`privacy._epsilon()` uses the plain Gaussian mechanism, ε₁ = √(2·ln(1.25/δ))/σ at sensitivity 1
-(updates are clipped to the clipping norm), composed over rounds by **basic composition**, δ = 1e-5.
+| composed ε | mechanism | AUROC | Worst practice |
+|---:|---|---|---|
+| ≈30 | central DP (σ=1.0) | 0.794 | 0.646 |
+| ≈31 | local DP (ε=5/round) | 0.754 | 0.574 |
 
-This is deliberately simple and auditable, and it is a **loose upper bound, not a certified
-budget**. It ignores subsampling amplification and uses the weakest composition theorem. A real MS4
-submission must use a proper accountant (RDP or PLD — `dp-accounting`, `opacus`), which will report
-a substantially smaller ε for the same σ. The shape of the utility curve is what this table
-establishes; the exact ε is not to be quoted externally.
+Roughly **0.04 AUROC and 0.07 worst-practice** is the measured price of the server never holding an
+individual update — at matched ε, on this cohort. The reason is structural: under local DP each of
+the ten practices adds independent noise, so the noise entering the aggregate grows with the number
+of practices instead of being added once.
+
+At ε ≈ 4.3 — the first genuinely meaningful budget in either table — the worst practice falls to
+**0.397**, well below the 0.495 it achieves by not collaborating at all. At this cohort size, local
+DP at a defensible ε is not a usable configuration. More practices is the lever that changes this.
+
+### 3.4 About the ε numbers
+
+The reported ε comes from an **RDP accountant** (Google's `dp_accounting`), at δ = 1e-5. The
+previous figures used the plain Gaussian mechanism composed by basic composition; they are retained
+in `results/privacy.json` as `epsilon_basic_upper_bound` **for comparison only**.
+
+Two things changed, and only one of them is "tighter accounting":
+
+- Where both are meaningful (larger σ), RDP is **2–4× tighter** at identical noise — σ=2.0 over 20
+  rounds is ε = 12.3, not 48.
+- At small σ the old expression was **not a valid bound at all**. The classical Gaussian analysis
+  ε₁ = √(2 ln(1.25/δ))/σ holds only for ε₁ ≤ 1, and every row violated that badly (at σ=0.1 the
+  per-round ε₁ alone is ~48). The old figures were not conservative; they were outside the regime
+  where the formula says anything. This is why σ=0.1 now reports a *larger* ε than before.
+
+The mechanism is unchanged throughout — same clipping, same noise. Only the accounting is honest now.
+
+**The cheapest remaining improvement is fewer rounds.** Every round composes additional loss, and
+the logistic protocols are converged by round ~10 ([REPORT.md](REPORT.md)). At σ=2.0, halving 20
+rounds to 10 takes ε from 12.3 to **8.1** at no measured accuracy cost. `num-server-rounds` is now
+10 by default for exactly this reason. Subsampling amplification (`fraction-fit` < 1.0) is credited
+by the accountant and is the next lever.
 
 ---
 
-## 4. L3 — SecAgg+ is achievable, but not on the same code path
+## 4. L3 — SecAgg+ is implemented
 
-Probed against the installed `flwr` 1.33.0 (`uv run ckd-privacy` reports this):
+Probed against the installed `flwr` 1.33.0:
 
 | Probe | Result |
 |---|---|
 | `secaggplus_mod` in `flwr.clientapp.mod` (Message API) | ❌ absent |
 | `secaggplus_mod` in `flwr.client.mod` (legacy) | ✅ present |
 | `SecAggPlusWorkflow` importable | ✅ present |
-| `SecAggPlusWorkflow.__call__` requires `LegacyContext` | ✅ yes — raises `TypeError` otherwise |
+| `SecAggPlusWorkflow.__call__` requires `LegacyContext` | ✅ yes |
 | DP mods in `flwr.clientapp.mod` | ✅ `fixedclipping_mod`, `adaptiveclipping_mod`, `LocalDpMod` |
 
-**Conclusion.** SecAgg+ has not been ported to the Message API in 1.33. It cannot be composed with
-`strategy.start()`, which is what this project's `ServerApp` uses. It **is** reachable by driving
-the legacy workflow from inside a modern `ServerApp`:
+SecAgg+ has not been ported to the Message API in 1.33, so it cannot compose with
+`strategy.start()`. It **is** reachable by driving the legacy workflow from inside a modern
+`ServerApp`, and **that is now built** — `server_app._run_secure_aggregation`:
 
-```python
-from flwr.server import LegacyContext, ServerConfig
-from flwr.server.strategy import FedAvg as LegacyFedAvg      # legacy strategy namespace
-from flwr.server.workflow import DefaultWorkflow, SecAggPlusWorkflow
-
-@app.main()
-def main(grid: Grid, context: Context) -> None:
-    legacy = LegacyContext(
-        context=context,
-        config=ServerConfig(num_rounds=20),
-        strategy=LegacyFedAvg(...),
-    )
-    workflow = DefaultWorkflow(
-        fit_workflow=SecAggPlusWorkflow(num_shares=3, reconstruction_threshold=2)
-    )
-    workflow(grid, legacy)      # takes the modern Grid
+```bash
+uv run flwr run . --run-config "secure-aggregation=true"
 ```
 
-with `secaggplus_mod` from `flwr.client.mod` on the `ClientApp`.
+Verified end-to-end: 12 practices, fit **and** evaluate aggregating with 0 failures.
 
-So MS4 is deliverable — but it forces a choice the consortium should make consciously:
+Two implementation notes worth keeping:
 
-| Option | SecAgg+ | Message API | Note |
-|---|---|---|---|
-| **A** Message API (today's code) | ❌ | ✅ | Central DP works; SecAgg+ does not |
-| **B** Legacy workflow path | ✅ | ❌ | Deprecated surface; SecAgg+ + DP both available |
-| **C** Both, selected by config | ✅ | ✅ | Two server code paths to maintain |
+- **One ClientApp serves both paths.** The legacy workflow speaks the legacy record shape
+  (`fitins.parameters` / `evaluateins.parameters`) rather than the Message API's `arrays`, so
+  `client_app.py`'s handlers accept either and translate through Flower's own compat bridge.
+- **The switch is run config, not an environment variable.** Mods are attached at *construction*
+  time, before any run config exists, so SecAgg+ and local DP are each installed as a small
+  dispatching mod that reads `ctx.run_config` when called. This also survives the process boundary —
+  the simulation engine runs ClientApps in Ray workers that do not inherit the launching shell's
+  environment.
 
-**Recommendation: C**, with the Message API as default and a `--secure-aggregation` flag switching
-to the legacy workflow. Also raise it with Flower directly — the Projektantrag records a Letter of
-Intent from FlowerAI precisely so the project can ask when SecAgg+ lands on the Message API.
+### What SecAgg+ does not give you
+
+1. **The threat model is semi-honest.** The guarantee holds against a server that follows the
+   protocol but inspects what it receives. It is *not* a guarantee against a server that deviates —
+   for example by running a round with a single practice, whose "aggregate" is that practice. The
+   control is `min_fit_clients`, set to the full practice count so such a round fails rather than
+   succeeds.
+2. **Participation stays visible.** The server always learns which practices took part, and the
+   aggregate. Only the individual contribution is hidden.
+3. **The aggregate is still model parameters.** SecAgg+ answers *who may see one practice's update*.
+   It does not by itself make the released model anonymous — that is what L4 and L6 are for.
 
 **SecAgg+ cannot protect the XGBoost path at all.** `FedXgbBagging` transmits serialized decision
-trees, whose split thresholds are derived from patient values; there is no vector to mask. Any
+trees whose split thresholds are derived from patient values; there is no vector to mask. Any
 SecAgg-protected deployment is a logistic-regression (or MLP) deployment. The benchmark's finding
-that trees federate poorly here (§ [REPORT.md](REPORT.md)) makes that an easy trade.
+that trees federate poorly here ([REPORT.md](REPORT.md)) makes that an easy trade.
 
 ---
 
-## 5. What each protocol puts on the wire
+## 5. L6 — the membership-inference audit
+
+EDPB Opinion 28/2024 does not accept that a model is anonymous because DP is configured; it asks for
+a case-by-case assessment and names **membership inference**, **model inversion** and
+**reconstruction** as the relevant tests. The first is now built (`uv run ckd-audit`): a
+loss-threshold attack (Yeom et al. 2018) and a shadow-model attack (Shokri et al. 2017, 16 shadow
+models), both against the released global model, scored as attack AUROC where 0.5 is a coin flip.
+
+Members are every practice's training rows; non-members are their held-out rows — the
+attacker-favourable framing, since both come from the same practices and the same distribution, so
+any separation is memorisation rather than population shift.
+
+| Mechanism | Threshold attack AUC | Shadow attack AUC | Verdict |
+|---|---|---|---|
+| **positive control** (n=40, deliberately overfit) | **0.655** | **0.659** | attack fires |
+| none (no DP at all) | 0.501 ± 0.006 | 0.502 ± 0.015 | pass |
+| central DP σ=0.1 … 2.0 | 0.502 – 0.504 | 0.502 – 0.509 | pass |
+| local DP ε=1 … 50 /round | 0.492 – 0.503 | 0.494 – 0.506 | pass |
+
+Pass criterion, one-sided and on effect size: the 95% CI upper bound of attack AUC stays within
+0.5 + 0.02. (Significance alone is the wrong test — with small seed variance it flags AUC = 0.495,
+an attack performing *worse* than chance, as a failure.)
+
+> ### How to read this
+>
+> **Neither attack finds a usable membership signal — including with no DP at all.** The positive
+> control shows this is not a broken testbed: the same attacks reach 0.66 against a model trained to
+> memorise.
+>
+> The explanation is capacity, not privacy engineering. The released model is logistic regression
+> with **eleven parameters** fitted over 3,276 patients; there is almost nowhere for an individual
+> to be memorised. That is a genuine and useful argument about this model class — and it means DP is
+> **not** what is providing the protection here, which matters when choosing how much utility to
+> spend on it.
+>
+> ⚠️ It is **not** an anonymity proof. It is one of three attack families, on synthetic data, with
+> ten features and no eGFR. Real practice data is richer and the result may not survive it. The
+> audit must be re-run on real data before any anonymity claim is made.
+
+---
+
+## 6. What each protocol puts on the wire
 
 | Protocol | Payload | Disclosure surface | Bits/client/round |
 |---|---|---|---:|
@@ -172,13 +248,36 @@ next step for T2.3.
 
 ---
 
-## 6. Honest gaps
+## 7. Reproducibility — a bug that invalidated the earlier tables
+
+The DP figures published before this revision could not be reproduced from their stated seeds, and
+three sources in this repo disagreed about them.
+
+**Cause.** Flower draws its DP noise from NumPy's *global* legacy RNG
+(`flwr/supercore/differential_privacy.py:46`, `np.random.normal(...)`). `run_dp_sweep`'s `seed`
+argument only reached the local train/test split, never that generator — so the DP noise was the one
+unseeded step in an otherwise fully seeded pipeline. The signature is unmistakable: σ = 0.0 draws no
+noise and was bit-identical everywhere, while divergence grew with σ.
+
+**Fix.** `privacy._seed_dp_noise` seeds the global RNG per **(seed, σ) cell** before each run — per
+cell rather than once per run, because the noise stream is consumed sequentially, so a single
+per-run seed would make every row depend on which σ values precede it in `NOISE_MULTIPLIERS`. Each
+of the five seeds still draws different noise, so the error bars keep their meaning.
+
+This was a violation of CLAUDE.md §0 rule 6. **Any DP figure quoted from a document dated before
+this revision should be re-checked against `results/privacy.json`.**
+
+---
+
+## 8. Honest gaps
 
 | Gap | Consequence | Owner |
 |---|---|---|
-| `patientid` in the SQL export | Extract is personal data, not pseudonymous | docport + Jorzig & Partner |
-| ε is a loose bound from basic composition | Cannot be quoted as the project's formal budget | IKIM / AG Kamp |
-| No membership-inference testbed | L6 audit is incomplete; DP's benefit is argued, not demonstrated | AG Kamp (T2.5) |
+| Model inversion and reconstruction attacks not built | L6 covers 1 of the 3 attack families EDPB names | AG Kamp (T2.5) |
+| Audit run on synthetic data only | A pass here is evidence about the method, not about the pilot model | pending real data |
+| No penetration / disclosure testing, no k-anonymity analysis | The analytics path's disclosure controls are unassessed | docport + Jorzig & Partner |
+| Local DP unusable at a defensible ε on 10 practices | MS4 risk; needs the pilot's 25 practices | IKIM / AG Kamp |
 | FedMosaic's own DP mechanisms unimplemented | Its privacy claim rests on payload shape alone | this repo (T2.3) |
 | Fairness audited by age band, not sex | Antrag specifies sex; `geschlecht` exists only in the real schema | pending real data |
 | DP measured on FedAvg only | FedProx/FedMosaic DP cost unmeasured | this repo |
+| Row order in the SQL export still follows `patientid` | Weak ordering channel; documented, not removed | docport |

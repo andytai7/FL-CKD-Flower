@@ -13,3 +13,19 @@ data/clinics/
 .DS_Store
 
 results/
+
+# LaTeX build products from a local compile. The *inputs* the report needs — paper/figures/,
+# paper/tables/, paper/generated/ — ARE committed, deliberately: an Overleaf upload must build
+# without running Python, and the committed artefacts are the audit trail for the numbers in the
+# report. Regenerate them with `./scripts/paper.sh --recompute`.
+paper/*.pdf
+paper/*.aux
+paper/*.bbl
+paper/*.bcf
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.toc
+paper/*.run.xml
+paper/*.fls
+paper/*.fdb_latexmk

@@ -1,0 +1,60 @@
+\question{Which model and protocol should the pilot deploy, and why does that matter legally?}
+\label{sec:modelchoice}
+\statusMeasured
+
+\begin{shortanswer}
+Logistic regression under FedProx or FedAvg. The legally useful fact is that this recommendation is
+\textbf{over-determined}: the same choice wins on accuracy, on bandwidth, on disclosure surface, and
+on protectability. There is no trade-off here in which privacy is bought with performance --- the
+model that federates best is also the only one secure aggregation can protect.
+\end{shortanswer}
+
+\subsection{Three findings, one conclusion}
+
+\paragraph{FedProx and FedAvg are indistinguishable.} They agree to three decimals on both measures:
+\BestFedAUC{} against \FedAvgAUC{} global, and \BestFedWorst{} worst practice for both. FedProx adds a proximal term
+\cite{li2020fedprox} intended to correct client drift, and at two local passes per round there is
+almost no drift to correct. This is a null result and is reported as one; it should be retested if
+the local epoch count increases, since that is the condition under which the term would start to
+matter.
+
+\paragraph{FedMosaic does not win on accuracy, and its case is elsewhere.} It reaches \MosaicAUC{}
+global --- slightly below the weight-sharing protocols, at \UplinkMosaic{} bits per round against
+\UplinkLogreg{}. Its argument is its disclosure profile: it
+never transmits a model at all, only predictions on an already-public cohort (\S\ref{sec:payload}).
+That is a qualitative difference, and if the legal analysis ends up treating parameter vectors as
+personal data while treating predictions on public patients differently, FedMosaic becomes worth
+revisiting on those grounds --- not on these.
+
+\paragraph{Do not deploy the tree-based protocol.} Its pooled ceiling matches logistic regression
+(\CeilingXGB{} against \CeilingAUC{}), so the model class is not the problem --- but federated it
+reaches only \XGBAUC{} with a worst practice of \XGBWorst{}, it \emph{degrades} with additional
+rounds (\S\ref{sec:reduce}), it costs \UplinkXGB{} bits per round against \UplinkLogreg{}, its split
+thresholds are literal patient values, and secure aggregation cannot protect it at all
+(\S\ref{sec:secagg}).
+
+\subsection{Why the convergence matters to counsel}
+
+It is common for privacy measures to be resisted on the grounds that they cost accuracy, which turns
+every safeguard into a negotiation. That is not the situation here. The evidence points one way on
+every axis at once:
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+  \toprule
+  Criterion & Favours & Against \\
+  \midrule
+  Global accuracy & logistic regression & trees, by \XGBGlobalGap{} AUROC \\
+  Worst-practice accuracy & logistic regression & trees, by \XGBWorstGap{} AUROC \\
+  Behaviour with more rounds & logistic regression (flat) & trees (degrade) \\
+  Bandwidth & logistic regression & trees, by $\sim$\XGBBandwidthRatio$\times$ \\
+  Disclosure surface & logistic regression & trees (literal patient values) \\
+  Protectable by secure aggregation & logistic regression & trees (impossible) \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+The consortium therefore does not have to trade model performance for the ability to make privacy
+guarantees. Pinning the deployment to logistic regression is what makes secure aggregation possible
+at all, and it costs nothing to do so.

@@ -1,0 +1,130 @@
+\appendix
+
+\section{Reproducibility}
+\label{sec:repro}
+
+Every figure, table and inline number in this report is produced by one script from one run. No
+quantity is typed into the prose by hand: each resolves through a generated macro, so the document
+cannot drift from the data it describes.
+
+\begin{center}
+\input{generated/manifest}
+\end{center}
+
+\subsection{Reproducing this report}
+
+\begin{verbatim}
+uv sync --extra dev --extra notebook
+uv run ckd-clinics --clinics 10
+uv run python paper/make_paper.py --recompute
+\end{verbatim}
+
+\subsection{A reproducibility defect in the earlier figures, and its correction}
+
+\textbf{Any privacy figure quoted from project documentation dated before this report should be
+re-checked.} The earlier DP tables could not be reproduced from their stated seeds, and three
+documents in the repository disagreed about them.
+
+The cause was a single unseeded step. Flower draws its differential-privacy noise from NumPy's
+\emph{global} legacy random generator. This project's seed reached the train/test split but never
+that generator, so the DP noise was the one unseeded step in an otherwise fully seeded pipeline. The
+signature was unmistakable in hindsight: the zero-noise row draws no noise and was bit-identical
+across all three documents, while disagreement grew with the noise level.
+
+The generator is now seeded per (seed, noise level) cell before each run --- per cell rather than
+once per run, because the noise stream is consumed sequentially, so a single per-run seed would make
+every row depend on which noise levels precede it in the sweep. Each of the \NumSeeds{} seeds still
+draws different noise, so the error bars retain their meaning.
+
+\textbf{Verification.} Running the pipeline twice in independent processes now reproduces every
+number bit-identically. This check is the first gate in the build and it failed, by construction,
+before the correction.
+
+\section{Configuration reference}
+\label{sec:config}
+
+\subsection{Training and aggregation}
+
+This is the assessment's third documented item, in full. It is a single declarative block, versioned
+with the code it configures, so any run's configuration is recoverable from the commit that produced
+it.
+
+\begin{center}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llp{7.4cm}}
+  \toprule
+  Key & Value & What it does \\
+  \midrule
+  \texttt{num-server-rounds} & 10 & Federation rounds. Reduced from 20 --- see \S\ref{sec:reduce} \\
+  \texttt{fraction-fit} & 1.0 & Fraction of practices training per round \\
+  \texttt{local-epochs} & 2 & Local passes per round \\
+  \texttt{model} & \texttt{logreg} & Logistic regression (\S\ref{sec:modelchoice}) \\
+  \texttt{class-weight-balanced} & true & Corrects the prevalence imbalance \\
+  \texttt{seed} & 42 & One global seed; per-practice seeds derived from it \\
+  \texttt{data-source} & \texttt{csv} / \texttt{fhir} & Where each practice reads its own rows \\
+  \midrule
+  \texttt{metric-privacy} & \textbf{true} & Anonymise per-practice metric lines (\S\ref{sec:sidechannels}) \\
+  \texttt{min-cohort-size} & \textbf{20} & Suppress lines below this cohort floor \\
+  \texttt{local-dp-epsilon} & 0.0 & Noise inside the SuperNode; 0 = off (\S\ref{sec:noise}) \\
+  \texttt{secure-aggregation} & false & SecAgg+ masking (\S\ref{sec:secagg}) \\
+  \texttt{secagg-num-shares} & 3 & Shamir shares issued per practice \\
+  \texttt{secagg-reconstruction-threshold} & 2 & Shares needed to recover a dropped mask \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+Differential privacy parameters not in the run config: clipping norm $C = 1.0$, $\delta = 10^{-5}$
+(chosen below $1/n$), accountant R\'enyi-DP via \texttt{dp\_accounting} \cite{dpaccounting}.
+
+\subsection{SuperLink capability surface}
+
+The assessment's fourth documented item, to the extent it is answerable without a deployment
+(\S\ref{sec:outside}). These are capabilities of the software an operator would inherit, not
+observations of a running host --- no such host exists.
+
+\begin{center}
+\small
+\begin{tabular}{lp{7.2cm}}
+  \toprule
+  Surface & What an operator would have \\
+  \midrule
+  State database & Run state persisted to a file on the host; omitting the option keeps state in
+                   memory only, lost on restart \\
+  Log file and rotation & Server logs written to disk, with rotation interval and backup count \\
+  Run log retrieval & Any operator with control-API access can pull a run's logs \\
+  Run listing and termination & Enumerate and stop runs \\
+  Node registry & The mapping of public keys to admitted practices is centrally held and
+                  administrable \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\section{Limitations}
+\label{sec:limits}
+
+\begin{center}
+\small
+\begin{tabular}{p{6.2cm}p{7.0cm}}
+  \toprule
+  Limitation & Consequence \\
+  \midrule
+  Synthetic data throughout & No absolute figure here is a clinical claim \\
+  No eGFR & The strongest CKD predictor is missing; real data should lift every accuracy number and
+            may weaken the leakage result \\
+  Prevalence, not incidence & A different prediction task from the production contract
+            (\S\ref{sec:realdata}) \\
+  \NumPractices{} practices, not 25 & Understates the pilot, especially for the privacy budget \\
+  Worst-practice figures have high seed variance & Single-seed results are unreliable; all figures
+            here are means over \NumSeeds{} seeds \\
+  Leakage audit covers 1 of 3 attack families & Not a demonstration of anonymity
+            (\S\ref{sec:anontest}) \\
+  Fairness audited by age band, not sex & The specified analysis is impossible until real data
+            arrives \\
+  DP measured on federated averaging only & FedProx and FedMosaic DP costs unmeasured \\
+  Secure aggregation verified in simulation & Not yet exercised against a live multi-host SuperLink \\
+  No analytics path & Half the assessment's framing is unanswered here
+            (\S\ref{sec:aggdisclosure}) \\
+  \bottomrule
+\end{tabular}
+\end{center}

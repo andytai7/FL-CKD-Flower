@@ -186,6 +186,30 @@ insecure = false
 flwr config list        # shows every connection and which is default
 ```
 
+### Remove the Flower-operated default (do this deliberately)
+
+The Flower CLI writes a `supergrid` entry into a freshly generated `config.toml` pointing at an
+endpoint Flower Labs operates:
+
+```toml
+[superlink.supergrid]
+address = "supergrid.flower.ai"
+```
+
+It is inert unless someone explicitly runs `flwr run . supergrid` — but that is one word on a
+command line between a self-hosted federation and transmission of model updates to a third party.
+On every operator and practice machine:
+
+```bash
+flwr config list                     # confirm what is configured
+# delete the [superlink.supergrid] block from $HOME/.flwr/config.toml
+flwr config list                     # confirm it is gone and the default is the consortium SuperLink
+```
+
+Pin `default` to the consortium SuperLink so an omitted federation argument cannot reach outside the
+consortium either. This is on the practice-side checklist below; it is cheap to do and easy to
+forget.
+
 ---
 
 ## Step 7 — Push the app
@@ -304,3 +328,9 @@ Per practice, before go-live:
 - [ ] Egress to the SuperLink on 9092 permitted; **no inbound** rule needed
 - [ ] Confirmed: no patient rows in any outbound payload — only model parameters
       (or, for FedMosaic, predictions on the public cohort)
+- [ ] `[superlink.supergrid]` removed from `$HOME/.flwr/config.toml`, and `default` pinned to the
+      consortium SuperLink (Step 6) — no path to a Flower-operated endpoint
+- [ ] `metric-privacy = true` and `min-cohort-size` at the agreed floor (deployment default since
+      the L5 hardening) — per-practice metric lines are not identified in the SuperLink logs
+- [ ] Extract carries **no** `patientid` column (`extract_features.sql` §9) — the practice CSV is a
+      pseudonymous extract, not personal data

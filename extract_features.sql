@@ -339,7 +339,11 @@ labor_features AS (
 --   Im Modell: 0-Imputation ODER separates Flag dx_* bereits vorhanden.
 SELECT
     (SELECT val FROM stichtag)                                     AS t0,
-    ep.patientid,
+    -- ep.patientid ENTFERNT (Datenschutz): ein direkter Identifikator im Export macht die
+    -- Praxis-CSV zu personenbezogenen Daten statt zu einem pseudonymen Extrakt. Nichts
+    -- stromabwaerts nutzt ihn - data/loader.py selektiert nur FEATURE_COLS. Falls T4.2 je
+    -- einen stabilen Join-Key ueber Extraktionen hinweg braucht: praxis-spezifischer
+    -- gesalzener Hash, bewusst entschieden - nicht die rohe ID zurueckholen.
     ep.alter_jahre,
     CASE ep.geschlecht WHEN 'M' THEN 1 WHEN 'W' THEN 0 ELSE NULL END AS geschlecht,
 
@@ -370,4 +374,9 @@ LEFT JOIN label_icd         ON label_icd.patientid = ep.patientid
 LEFT JOIN label_gfr         ON label_gfr.patientid = ep.patientid
 LEFT JOIN diagnose_features df ON df.patientid     = ep.patientid
 LEFT JOIN labor_features    lf ON lf.patientid     = ep.patientid
+-- Sortierung: nach patientid, damit Extrakte reproduzierbar sind. Die Spalte selbst wird NICHT
+-- exportiert (s.o.); die Zeilenreihenfolge folgt ihr aber weiterhin. Wenn patientid chronologisch
+-- vergeben wird, ist die Zeilenposition ein schwacher Kanal fuer die relative Aufnahmereihenfolge.
+-- Downstream daher die Zeilenposition nie als Information behandeln; wer das ausschliessen will,
+-- sortiert stattdessen zufaellig (ORDER BY random()) und verliert dafuer die Reproduzierbarkeit.
 ORDER BY ep.patientid;

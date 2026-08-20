@@ -1,0 +1,62 @@
+\question{What does FLIP-IT compute, and where does each step happen?}
+\label{sec:method}
+\statusMethod
+
+\begin{shortanswer}
+Every computation that touches a patient row happens inside the practice. Each round, a practice
+receives the current global coefficient vector, trains on its own rows for two passes, and returns
+an updated vector plus the number of examples it trained on. The server multiplies those vectors by
+their example counts, sums, and divides. No patient row, and no derived per-patient quantity, is
+ever transmitted --- including the feature scaler, which is fitted locally and stays there.
+\end{shortanswer}
+
+\subsection{The local pipeline}
+
+A practice's SuperNode holds its own extract and never sends it anywhere. Per round, in order:
+
+\begin{enumerate}
+  \item \textbf{Load} the practice's rows. In the pilot this is the practice's own FHIR server or
+        its Tomedo export; in the test bed it is a generated CSV. The loader is the only component
+        that differs, deliberately, so that everything downstream is identical either way.
+  \item \textbf{Split} 80/20 into train and held-out, by a permutation seeded from the global seed
+        and the practice index --- reproducible, and stable across rounds so that the held-out rows
+        are never trained on.
+  \item \textbf{Scale} features with a \texttt{StandardScaler} fitted \emph{on this practice's
+        training rows only}. This matters for the disclosure analysis: the scaler encodes practice
+        means and variances, and it is \textbf{never transmitted}. Each practice keeps its own.
+  \item \textbf{Train} logistic regression, warm-started from the global vector, for two full
+        passes, with balanced class weighting for the prevalence imbalance.
+  \item \textbf{Reply} with the updated coefficient vector and \texttt{num-examples}.
+\end{enumerate}
+
+The model is logistic regression over \NumFeatures{} features plus an intercept: age, six binary
+comorbidity flags, and three ``years since diagnosis'' durations. \S\ref{sec:modelchoice} explains
+why this model class rather than a stronger one, and why that choice is also the privacy-preferable
+one.
+
+\subsection{The round trip}
+
+FLIP-IT runs on Flower \cite{beutel2020flower}, version \FlwrVersion{}. In the deployment runtime the
+\textbf{SuperLink} is a message broker: practices (\textbf{SuperNodes}) pull instruction messages and
+push reply messages; the ServerApp retrieves the replies and aggregates them. The aggregation rule
+is sample-weighted federated averaging \cite{mcmahan2017fedavg}: with $w_i$ the vector returned by
+practice $i$ and $n_i$ its example count,
+\[
+  w_{\text{global}} \;=\; \frac{\sum_i n_i\, w_i}{\sum_i n_i}.
+\]
+\texttt{num-examples} is exactly the $n_i$ above --- it is transmitted because the average is
+weighted by it, and for no other purpose.
+
+Two properties of this arrangement drive the whole of \S\ref{sec:isolation}, and they are worth
+stating here rather than as a surprise later: \textbf{aggregation is the last step of a round, not a
+property of transmission}, and \textbf{every message carries its sender's identity}. Neither is a
+defect; both are simply how the protocol works, and both are what secure aggregation exists to
+change.
+
+\subsection{Configuration}
+
+The complete training and aggregation configuration --- the third of the four items the assessment
+listed as undocumented --- is a single declarative block in the project's \texttt{pyproject.toml},
+reproduced in full in Appendix~\ref{sec:config}. It is not scattered through code, and it is
+versioned with the code it configures, so any run's configuration is recoverable from the commit
+that produced it.

@@ -1,0 +1,19 @@
+\begin{tabular}{llrrl}
+    \toprule
+    Setting & $\varepsilon$ composed & Threshold attack & Shadow attack & Verdict \\
+    \midrule
+    \emph{Positive control} (n=40, overfit) & --- & \emph{0.655} & \emph{0.659} & \emph{fires} \\
+    \midrule
+    No DP at all & --- & 0.501 $\pm$ 0.006 & 0.502 $\pm$ 0.015 & pass \\
+    Central DP $\sigma$=0.1 & 1211.8 & 0.502 $\pm$ 0.006 & 0.506 $\pm$ 0.010 & pass \\
+    Central DP $\sigma$=0.25 & 244.0 & 0.502 $\pm$ 0.007 & 0.509 $\pm$ 0.010 & pass \\
+    Central DP $\sigma$=0.5 & 81.1 & 0.502 $\pm$ 0.006 & 0.502 $\pm$ 0.016 & pass \\
+    Central DP $\sigma$=1 & 30.1 & 0.503 $\pm$ 0.008 & 0.506 $\pm$ 0.013 & pass \\
+    Central DP $\sigma$=2 & 12.3 & 0.504 $\pm$ 0.011 & 0.505 $\pm$ 0.011 & pass \\
+    Local DP $\varepsilon$=50/round & 1283.4 & 0.501 $\pm$ 0.006 & 0.505 $\pm$ 0.012 & pass \\
+    Local DP $\varepsilon$=20/round & 257.6 & 0.503 $\pm$ 0.009 & 0.506 $\pm$ 0.009 & pass \\
+    Local DP $\varepsilon$=10/round & 85.0 & 0.501 $\pm$ 0.009 & 0.502 $\pm$ 0.011 & pass \\
+    Local DP $\varepsilon$=5/round & 31.4 & 0.493 $\pm$ 0.010 & 0.494 $\pm$ 0.008 & pass \\
+    Local DP $\varepsilon$=1/round & 4.3 & 0.492 $\pm$ 0.017 & 0.497 $\pm$ 0.022 & pass \\
+    \bottomrule
+\end{tabular}

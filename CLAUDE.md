@@ -100,7 +100,8 @@ from it.
 | `server_app.py` | Flower `ServerApp` — `@app.main()`, `strategy.start()`, and `weighted_and_worst` (dual-level metrics + the L5 privacy policy). |
 | `simulate.py` | In-process runner over Flower's real strategies → `uv run ckd-simulate`. Fast per-round benchmarking without Ray. |
 | `benchmark.py` | The protocol benchmark → `uv run ckd-benchmark` → `results/benchmark.json`. |
-| `privacy.py` | DP sweep + SecAgg+ feasibility probe → `uv run ckd-privacy` → `results/privacy.json`. |
+| `privacy.py` | Central + local DP sweeps, RDP accountant, SecAgg+ probe → `uv run ckd-privacy` → `results/privacy.json`. |
+| `audit.py` | Membership-inference leakage audit (T2.5 / layer L6) → `uv run ckd-audit` → `results/audit.json`. |
 | `centralized.py` | Pooled-data ceiling baselines → `uv run ckd-baseline`. **Use `--clinics` when comparing against `--clinics` runs.** |
 | `messages.py` | Single definition of the Flower `Message` shapes the in-process runners exchange. |
 | `task.py` | Local `StandardScaler`, the imbalanced-data metrics, and the T2.5 `fairness_metrics`. |
@@ -225,10 +226,18 @@ uv run ckd-simulate --model xgboost --clinics
 uv run ckd-simulate --protocol fedmosaic --clinics
 uv run ckd-baseline --model all --clinics # pooled ceiling on the SAME data
 uv run ckd-benchmark --rounds 20          # full protocol benchmark -> results/
-uv run ckd-privacy --seeds 42 43 44 45 46 # DP sweep + SecAgg probe  -> results/
+uv run ckd-privacy --seeds 42 43 44 45 46 # central + local DP sweeps, SecAgg probe -> results/
+uv run ckd-audit   --seeds 42 43 44 45 46 # membership-inference audit (L6) -> results/
 
 uv run flwr run .                         # full Ray engine, real ServerApp/ClientApp
+uv run flwr run . --run-config "secure-aggregation=true"   # the SecAgg+ path (L3)
+uv run flwr run . --run-config "local-dp-epsilon=5.0"      # noise inside the SuperNode (L4-local)
 ```
+
+**Privacy switches are run config, not environment variables.** `ClientApp` takes its mods at
+construction time, so `secure-aggregation` and `local-dp-epsilon` are installed as dispatching mods
+that read `ctx.run_config` when called — which is also what makes them survive the Ray worker
+process boundary.
 
 **Deployment:** SuperLink connection config lives in `~/.flwr/config.toml` from flwr 1.30+, not in
 `pyproject.toml`. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
@@ -253,16 +262,28 @@ Aggregation**; **MS5** (m24) pilot in **25 practices**; **MS6** (m34) transfer s
 
 ## 8. Live issues
 
-1. **`extract_features.sql:342` exports `ep.patientid`** — a direct identifier in every practice
-   CSV. Drop or hash before any real extraction ([PRIVACY.md §2](docs/PRIVACY.md)).
-2. **DP ε is far too large to be meaningful** at the cohort size (48–969 over 20 rounds). The
-   biggest MS4 risk; needs more practices, fewer rounds, and a real accountant
-   ([PRIVACY.md §3](docs/PRIVACY.md)).
-3. **SecAgg+ is legacy-path only** in flwr 1.33 and cannot compose with `strategy.start()`
-   ([PRIVACY.md §4](docs/PRIVACY.md)).
-4. **No membership-inference testbed** — the L6 leakage audit is not yet built.
-5. **No test suite.** `pytest` and the `test` target were removed rather than left broken; real
-   tests still need writing.
-6. **Fairness is audited by age band, not sex** — blocked on the real schema's `geschlecht`.
-7. **XGBoost federates poorly here** (0.712 vs a 0.860 pooled ceiling) and cannot be protected by
+Closed in the privacy-hardening pass (see [PRIVACY.md](docs/PRIVACY.md)): the `patientid` export,
+the SecAgg+ gap, the missing leakage audit, the loose ε accounting, and a reproducibility bug that
+had invalidated every published DP figure.
+
+1. **Local DP is unusable at a defensible ε on this cohort.** At composed ε ≈ 4.3 the worst practice
+   falls to 0.397 — below the 0.495 it gets by not collaborating at all. Central DP is far cheaper
+   but does **not** stop the server seeing individual updates. This is the live MS4 risk, and the
+   lever is the pilot's 25 practices ([PRIVACY.md §3](docs/PRIVACY.md)).
+2. **The leakage audit covers 1 of the 3 attack families EDPB Opinion 28/2024 names.** Membership
+   inference is built and passes at every setting including no-DP; **model inversion and
+   reconstruction are not built** ([PRIVACY.md §5](docs/PRIVACY.md)).
+3. **The audit has only ever run on synthetic data** — ten features, no eGFR. A pass is evidence
+   about the method, not about the pilot model. Re-run before any anonymity claim.
+4. **No test suite.** `pytest` and the `test` target were removed rather than left broken; real
+   tests still need writing. The determinism gate in PRIVACY.md §7 is the closest thing to one.
+5. **Fairness is audited by age band, not sex** — blocked on the real schema's `geschlecht`.
+6. **XGBoost federates poorly here** (0.712 vs a 0.860 pooled ceiling) and cannot be protected by
    SecAgg+. Logistic regression is the recommended deployment model.
+7. **The federated analytics path is not implemented here.** The legal assessment distinguishes it
+   from the AI training path; this repo only implements the latter. "Analytics" is not a Flower
+   concept — it appears nowhere in flwr 1.33 — so the *structural* answers (who sees what, whether
+   SecAgg+/DP apply) carry over unchanged, but the disclosure-control questions (cell suppression,
+   k-anonymity, differencing across repeated queries) need the other team's indicator spec.
+8. **Row order in the SQL export still follows `patientid`** even though the column is dropped — a
+   weak ordering channel, documented in the SQL rather than removed.

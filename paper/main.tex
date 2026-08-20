@@ -1,0 +1,148 @@
+%% FLIP-IT — Technical Expert Report
+%% Build: pdfLaTeX + biber.  Overleaf: upload this directory, compiler pdfLaTeX.
+%% Every number in the prose comes from generated/macros.tex — never type one in by hand.
+%% Regenerate figures, tables and macros with:  uv run python paper/make_paper.py
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[english]{babel}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage[most]{tcolorbox}
+\usepackage{amsmath}
+\usepackage{hyperref}
+
+\usepackage[backend=biber,style=numeric,sorting=none]{biblatex}
+\addbibresource{refs.bib}
+
+\graphicspath{{figures/}}
+
+%% ── palette ────────────────────────────────────────────────────────────────
+\definecolor{ink}{HTML}{141D24}
+\definecolor{muted}{HTML}{5C6B77}
+\definecolor{rule}{HTML}{E3E9ED}
+\definecolor{accent}{HTML}{2A78D6}
+\definecolor{warn}{HTML}{EB6834}
+\definecolor{boxbg}{HTML}{F5F8FB}
+
+\hypersetup{colorlinks=true, linkcolor=accent, urlcolor=accent, citecolor=accent,
+  pdftitle={FLIP-IT: Technical Expert Report}, pdfauthor={FLIP-IT technical work package}}
+
+\captionsetup{font=small, labelfont=bf, labelsep=period}
+\setlist[itemize]{leftmargin=1.2em, itemsep=2pt, topsep=3pt}
+\setlist[enumerate]{leftmargin=1.4em, itemsep=2pt, topsep=3pt}
+
+%% ── the document's three structural devices ────────────────────────────────
+%% \question — the section heading IS the question counsel asked.
+\newcommand{\question}[1]{\section{#1}}
+
+%% \shortanswer — a boxed one-paragraph answer directly under the heading, so the
+%% whole report can be read as a sequence of boxes and stopped there.
+\newtcolorbox{answerbox}[1][]{
+  enhanced, breakable, colback=boxbg, colframe=accent,
+  boxrule=0pt, leftrule=2.5pt, arc=1pt, left=8pt, right=8pt, top=6pt, bottom=6pt,
+  fonttitle=\bfseries\small, #1}
+\newenvironment{shortanswer}{\begin{answerbox}\small\textbf{Answer.\ }}{\end{answerbox}}
+
+%% \status — every section declares what kind of claim it is making.
+\newcommand{\statuschip}[2]{{\small\textcolor{#1}{\textbf{#2}}}}
+\newcommand{\statusMethod}{\statuschip{accent}{Methodology-determined}%
+  {\small\textcolor{muted}{ --- true of the method regardless of the data}}\par\medskip}
+\newcommand{\statusMeasured}{\statuschip{accent}{Measured on the test bed}%
+  {\small\textcolor{muted}{ --- synthetic data, \NumSeeds{} seeds; see \S\ref{sec:limits}}}\par\medskip}
+\newcommand{\statusDeployment}{\statuschip{warn}{Requires the deployment}%
+  {\small\textcolor{muted}{ --- depends on decisions not yet taken}}\par\medskip}
+\newcommand{\statusOutside}{\statuschip{warn}{Outside technical scope}%
+  {\small\textcolor{muted}{ --- stated as a boundary, with the facts needed to decide it}}\par\medskip}
+
+%% A marked box for material addressed to another work package rather than to counsel.
+\newtcolorbox{sidenote}[1]{enhanced, breakable, colback=white, colframe=muted,
+  boxrule=0.6pt, sharp corners, left=8pt, right=8pt, top=6pt, bottom=6pt,
+  borderline={0.6pt}{0pt}{muted, dash pattern={on 3pt off 2pt}},
+  title={\small\bfseries #1}, coltitle=ink, colbacktitle=white, fonttitle=\bfseries}
+
+\input{generated/macros}
+
+%% ───────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+\begin{titlepage}
+\vspace*{2cm}
+{\Huge\bfseries FLIP-IT\par}
+\vspace{6pt}
+{\LARGE Technical Expert Report\par}
+\vspace{18pt}
+{\large Federated learning for chronic kidney disease risk\\
+across regional GP practices\par}
+\vspace{24pt}
+\noindent\rule{\textwidth}{0.6pt}
+\vspace{12pt}
+
+{\large\bfseries In response to:} the preliminary legal assessment of 10 August 2026\\
+(J.~Fl\"ototto, Jorzig \& Partner), and the central open technical question\\
+transmitted by Dr.~N.~Conze, docport GmbH.
+
+\vspace{18pt}
+{\large\bfseries Prepared by:} the FLIP-IT technical work package.
+
+\vspace{18pt}
+{\large\bfseries Status:} Preliminary engineering findings. \textbf{Not legal advice.}\\
+This document supplies facts for the legal assessment; it does not draw legal conclusions.
+
+\vspace{12pt}
+{\large\bfseries Basis:} \texttt{FL-CKD-Flower}, the pre-kickoff methodology test bed.\\
+Verified against Flower \FlwrVersion{}. Measurements are \textbf{synthetic}.\\
+Run of \RunDate{} --- see Appendix~\ref{sec:repro}.
+
+\vspace{12pt}
+\noindent\rule{\textwidth}{0.6pt}
+
+\vfill
+\begin{answerbox}
+\small
+\textbf{How to read this report.} Every section heading is a question counsel raised. Directly
+under each heading is a boxed one-paragraph answer; the discussion that follows is the reasoning and
+the evidence. Reading only the boxes gives a complete, if compressed, set of answers.
+
+Each section also carries a status chip stating what kind of claim it makes:
+\textcolor{accent}{\textbf{Methodology-determined}} facts hold regardless of which data the system
+runs on; \textcolor{accent}{\textbf{Measured on the test bed}} results come from synthetic data and
+transfer only as evidence about the method; \textcolor{warn}{\textbf{Requires the deployment}} marks
+questions that no amount of engineering here can close.
+\end{answerbox}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\input{sections/00-summary}
+\input{sections/01-method}
+\input{sections/02-payload}
+\input{sections/03-isolation}
+\input{sections/04-flowerlabs}
+\input{sections/05-secagg}
+\input{sections/06-noise-placement}
+\input{sections/07-budget}
+\input{sections/08-reducing-epsilon}
+\input{sections/09-aggregate-disclosure}
+\input{sections/10-side-channels}
+\input{sections/11-does-it-work}
+\input{sections/12-model-choice}
+\input{sections/13-anonymisation-test}
+\input{sections/14-real-data}
+\input{sections/15-outside-scope}
+\input{sections/16-recommendations}
+\input{sections/99-appendix}
+
+\printbibliography[heading=bibintoc]
+
+\end{document}

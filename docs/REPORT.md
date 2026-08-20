@@ -129,34 +129,38 @@ FedXgbBagging, which has the worst privacy profile *and* the worst accuracy.
 ### Cost of Differential Privacy
 
 Flower's real `DifferentialPrivacyServerSideFixedClipping` over FedAvg, clipping norm 1.0, 20
-rounds, **5 seeds** (mean ± std):
+rounds, **5 seeds** (mean ± std). ε from an **RDP accountant** (`dp-accounting`), δ = 1e-5:
 
-| Noise σ | AUROC | Worst practice | ε upper bound | AUROC cost |
+| Noise σ | AUROC | Worst practice | ε (RDP) | AUROC cost |
 |---:|---|---|---:|---:|
 | 0.00 | **0.808 ± 0.008** | 0.675 ± 0.054 | — | — |
-| 0.10 | 0.807 ± 0.008 | 0.674 ± 0.057 | 969 | −0.001 |
-| 0.25 | 0.807 ± 0.007 | 0.672 ± 0.052 | 388 | −0.001 |
-| 0.50 | 0.800 ± 0.010 | 0.670 ± 0.060 | 194 | −0.008 |
-| 1.00 | 0.788 ± 0.013 | 0.663 ± 0.027 | 97 | −0.020 |
-| 2.00 | 0.753 ± 0.029 | 0.566 ± 0.075 | 48 | −0.055 |
+| 0.10 | 0.808 ± 0.007 | 0.676 ± 0.056 | 1211.8 | −0.000 |
+| 0.25 | 0.807 ± 0.008 | 0.669 ± 0.054 | 244.0 | −0.001 |
+| 0.50 | 0.803 ± 0.011 | 0.681 ± 0.033 | 81.1 | −0.005 |
+| 1.00 | 0.794 ± 0.014 | 0.646 ± 0.061 | 30.1 | −0.014 |
+| 2.00 | 0.773 ± 0.017 | 0.608 ± 0.097 | **12.3** | −0.035 |
 
 > ### ⚠️ The finding that matters for MS4
 >
-> The tempting read is "DP is nearly free — 0.001 AUROC at σ ≤ 0.25". **The ε column says
-> otherwise.** Every ε here is enormous; meaningful guarantees are single-digit. Getting there means
-> far more noise, and by σ = 2.0 the worst practice has already fallen to 0.566 — worse than several
-> practices achieve with no collaboration at all.
+> The tempting read is "DP is nearly free at σ ≤ 0.25". **The ε column says otherwise.** Meaningful
+> guarantees are single-digit; getting there means far more noise, and by σ = 2.0 the worst practice
+> has already fallen to 0.608.
 >
-> The cause is cohort size: 3,276 patients across 10 practices is very little to hide in. **This
-> should reach the consortium now, not at month 18.** Levers: the funded pilot's 25 practices rather
-> than 10, fewer rounds (each composition spends budget), a proper RDP/PLD accountant instead of the
-> loose basic-composition bound used here, and accepting a larger ε with SecAgg+ carrying more of
-> the load.
+> The cause is cohort size: 3,276 patients across 10 practices is very little to hide in. Levers:
+> the funded pilot's 25 practices, fewer rounds (each composition spends budget), subsampling
+> amplification, and accepting a larger ε with SecAgg+ carrying more of the load.
 
-The ε values come from `privacy._epsilon()` — Gaussian mechanism, basic composition, δ = 1e-5.
-Deliberately simple and auditable, and a **loose upper bound, not a certified budget**. A real MS4
-submission needs `dp-accounting` or `opacus`, which will report a smaller ε for the same σ. The
-shape of the curve is the result here; the exact ε is not for external quotation.
+**Local DP costs far more, and it is the mechanism that answers the legal question.** Central DP
+noises *during aggregation*, so the server still receives every un-noised update; only local DP
+(`LocalDpMod`, inside the SuperNode) changes that. At a comparable composed ε ≈ 31 it reaches AUROC
+0.754 / worst 0.574 against central DP's 0.794 / 0.646 — and at ε ≈ 4.3, the first defensible
+budget, the worst practice falls to **0.397**, below the 0.495 it gets by not collaborating at all.
+Full table: [PRIVACY.md §3](PRIVACY.md).
+
+**On the earlier ε figures.** Previous versions of this table used a hand-rolled basic-composition
+bound. Where both are meaningful the accountant is 2–4× tighter, and at low σ the old expression was
+**not a valid bound at all** (it holds only for per-round ε ≤ 1, which every row violated). Earlier
+figures were also irreproducible — see [PRIVACY.md §7](PRIVACY.md). **Do not quote them.**
 
 ### Secure Aggregation
 
@@ -169,16 +173,32 @@ Probed against the installed flwr 1.33.0:
 | `SecAggPlusWorkflow.__call__` requires `LegacyContext` | ✅ yes |
 | DP mods in `flwr.clientapp.mod` | ✅ all three present |
 
-**SecAgg+ has not been ported to the Message API in 1.33** and cannot compose with
-`strategy.start()`, which this project's `ServerApp` uses. It **is** achievable by driving
-`DefaultWorkflow(fit_workflow=SecAggPlusWorkflow(...))` with a `LegacyContext` from inside a modern
-`ServerApp` — so MS4 is deliverable, on a second server code path. Construction in
-[PRIVACY.md §4](PRIVACY.md#4-l3--secagg-is-achievable-but-not-on-the-same-code-path). Worth raising
-directly with Flower under the Letter of Intent recorded in the Projektantrag.
+SecAgg+ has not been ported to the Message API in 1.33 and cannot compose with `strategy.start()`.
+It **is** reachable by driving `DefaultWorkflow(fit_workflow=SecAggPlusWorkflow(...))` with a
+`LegacyContext` from inside a modern `ServerApp` — and **that is now implemented**:
+
+```bash
+uv run flwr run . --run-config "secure-aggregation=true"
+```
+
+Verified end-to-end: 12 practices, fit and evaluate aggregating with 0 failures. Construction and
+the three limits that must travel with any claim about it — semi-honest threat model, visible
+participation, and an aggregate that is still model parameters — in
+[PRIVACY.md §4](PRIVACY.md).
 
 **SecAgg+ cannot protect FedXgbBagging at all** — trees are not a vector to mask. Any
 SecAgg-protected deployment is a logistic-regression deployment, which the accuracy results make an
 easy trade.
+
+### Leakage audit
+
+Membership inference against the released model (`uv run ckd-audit`): loss-threshold and
+shadow-model attacks find no usable signal at any privacy setting, **including with no DP at all**
+(attack AUROC 0.501 / 0.502 against a chance baseline of 0.500), while a positive control on a
+deliberately overfit model reaches 0.659 — so the attack fires when leakage is present. The
+explanation is model capacity, not privacy engineering: eleven parameters over 3,276 patients.
+This is one of the three attack families EDPB Opinion 28/2024 names, on synthetic data. See
+[PRIVACY.md §5](PRIVACY.md).
 
 ---
 
