@@ -6,7 +6,7 @@
 It is reachable, and it is now implemented and verified end-to-end: with
 \texttt{secure-aggregation} enabled, a full round of training and evaluation completes across twelve
 practices and the server obtains only the sum. Three limits must travel with any claim made about
-it. The guarantee is \textbf{semi-honest} --- it protects against a server that follows the protocol
+it. The guarantee is \textbf{semi-honest} it protects against a server that follows the protocol
 and inspects what it receives, not against one that deviates. \textbf{Participation stays visible}:
 the server always learns who took part. And \textbf{the aggregate is still model parameters}, so
 secure aggregation does not by itself make the released model anonymous.
@@ -16,7 +16,7 @@ secure aggregation does not by itself make the released model anonymous.
 
 Secure aggregation \cite{bonawitz2017secagg} has each pair of participating practices derive a
 shared secret mask. Practice $i$ adds the mask to its update and practice $j$ subtracts it, so the
-masks cancel exactly when the contributions are summed --- and only then. The server sees each
+masks cancel exactly when the contributions are summed and only then. The server sees each
 practice's masked vector, which on its own is indistinguishable from noise, and recovers a
 meaningful value only from the total.
 
@@ -24,7 +24,7 @@ Because a practice that drops out mid-round would leave its masks uncancelled, e
 distributes Shamir secret shares of its own seed. If enough surviving practices contribute shares,
 the dropped practice's mask can be reconstructed and removed. Two parameters govern this and are
 exposed as configuration: the number of shares issued per practice, and the reconstruction threshold
---- the number required to recover a mask. The threshold is the security parameter: it is the number
+the number required to recover a mask. The threshold is the security parameter: it is the number
 of practices that would have to collude \emph{with} the server to unmask an individual contribution.
 
 \subsection{Why it is a second code path}
@@ -63,14 +63,14 @@ rediscover:
 \begin{enumerate}
   \item \textbf{The threat model is semi-honest.} The guarantee holds against a server that follows
         the protocol but inspects what it receives. It is \emph{not} a guarantee against a server
-        that actively deviates --- most obviously by running a round with a single practice, whose
+        that actively deviates most obviously by running a round with a single practice, whose
         ``aggregate'' is that practice's update. The available control is the minimum participant
         count, which is set to the full practice count so that such a round fails rather than
         quietly succeeding. That is a configuration discipline, not a cryptographic guarantee, and
         counsel should treat it as such.
   \item \textbf{Participation stays visible.} The server always learns which practices took part in
         each round, and the aggregate. Only the individual contribution is hidden. Where
-        participation itself is sensitive --- a practice's presence in a CKD study may be --- secure
+        participation itself is sensitive a practice's presence in a CKD study may be secure
         aggregation does not address it.
   \item \textbf{The aggregate is still model parameters.} Secure aggregation answers \emph{who may
         see one practice's update}. It says nothing about what can be inferred from the model that

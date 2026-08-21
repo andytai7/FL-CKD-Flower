@@ -1,13 +1,13 @@
-\question{Does the method work at all --- what does federation buy, and against what ceiling?}
+\question{Does the method work at all what does federation buy, and against what ceiling?}
 \label{sec:works}
 \statusMeasured
 
 \begin{shortanswer}
-Federation reaches \BestFedAUC{} AUROC against a pooled-data ceiling of \CeilingAUC{} --- a gap of
-\CeilingGapAbs{} --- without any practice sharing a patient row. But the average is not where the
+Federation reaches \BestFedAUC{} AUROC against a pooled-data ceiling of \CeilingAUC{} a gap of
+\CeilingGapAbs{} without any practice sharing a patient row. But the average is not where the
 benefit lies. A practice training alone reaches \LocalAUC{} on average while its worst member
 manages \LocalWorst{}, which is no better than a coin flip; federation lifts that worst practice to
-\BestFedWorst{}, a gain of \WorstGain{}. \textbf{The benefit is equity, not average accuracy}, which
+\BestFedWorst{}, a gain of \WorstGain{}. \textbf{The benefit is equity}, which
 matters because the project's premise is that small practices should get a model they could not
 build alone.
 \end{shortanswer}
@@ -19,11 +19,11 @@ feature set, an identical local optimiser and identical seeds; each figure is th
 \NumSeeds{} seeds. Two reference points make the protocols interpretable, and neither is a protocol:
 
 \begin{itemize}
-  \item \textbf{The pooled ceiling} --- one model trained on every practice's data together. Reality
+  \item \textbf{The pooled ceiling} one model trained on every practice's data together. Reality
         forbids it; it is the upper bound federation is trying to reach, and it has no
         worst-practice figure by construction, because pooling destroys the practice boundary the
         measure is defined over.
-  \item \textbf{Local-only} --- each practice trains on its own rows, keeps its own model, and is
+  \item \textbf{Local-only} each practice trains on its own rows, keeps its own model, and is
         scored on its own held-out rows. This is the honest ``what if we never collaborated'' floor.
 \end{itemize}
 
@@ -31,7 +31,7 @@ Two comparisons in the table are deliberately not like-for-like, and reading the
 mislead. The tree-based protocol is a different \emph{model class}, reported alongside rather than
 head-to-head. And the personalised methods produce \NumPractices{} different models, each scored on
 its own practice's patients, whereas the weight-sharing protocols produce a single global model
-scored on everyone --- personalisation is allowed to specialise, so it is measuring something
+scored on everyone personalisation is allowed to specialise, so it is measuring something
 slightly different.
 
 \begin{table}[htbp]
@@ -61,7 +61,7 @@ slightly different.
   \label{tab:cohort}
 \end{table}
 
-The practices are non-IID in three ways simultaneously --- covariate shift, label shift and quantity
+The practices are non-IID in three ways simultaneously covariate shift, label shift and quantity
 shift. A \PanelMin{}-patient practice at \PrevMin{} prevalence is a fundamentally different
 estimation problem from a \PanelMax{}-patient practice at \PrevMax{}. That is what makes naive
 averaging hard, and it is why the worst-practice column moves so much more than the mean.
@@ -69,7 +69,7 @@ averaging hard, and it is why the worst-practice column moves so much more than 
 \subsection{The falsification test}
 
 A result that only ever confirms is not evidence. Every comparator is therefore also run on a
-signal-free dataset --- the same pipeline, the same protocols, but a placeholder table whose maximum
+signal-free dataset the same pipeline, the same protocols, but a placeholder table whose maximum
 absolute feature--label correlation is \NegControlMaxCorr{}. Anything meaningfully above 0.5 there is a bug, not a
 finding.
 
@@ -83,5 +83,5 @@ finding.
 \end{table}
 
 The test passes: no protocol manufactures signal. This is worth recording for counsel because it
-bears on whether the headline numbers can be trusted at all --- the same code, run on data with
+bears on whether the headline numbers can be trusted at all the same code, run on data with
 nothing in it, reports nothing.

@@ -13,11 +13,9 @@ listed so that the record is complete; 6--12 are open.
   \item \textbf{Implement and measure local DP.} Establishes what noise-at-the-practice actually
         costs rather than asserting availability. The answer is uncomfortable and is reported as
         such. (\S\ref{sec:noise})
-  \item \textbf{Replace the privacy accounting} with a standard R\'enyi-DP accountant. The previous
-        figures were invalid at low noise, not merely loose. (\S\ref{sec:budget})
   \item \textbf{Build the membership-inference audit}, with a positive control. Converts ``DP is
         configured'' into a reported attack result. (\S\ref{sec:anontest})
-  \item \textbf{Close the two side channels} --- the direct identifier in the export, and identified
+  \item \textbf{Close the two side channels} the direct identifier in the export, and identified
         per-practice metric logging, now anonymised by default. (\S\ref{sec:sidechannels})
 \end{enumerate}
 
@@ -27,18 +25,18 @@ listed so that the record is complete; 6--12 are open.
   \item \textbf{Decide who operates the SuperLink, and decide secure aggregation with it.} These are
         the same decision viewed from two sides, they gate the Art.~26/28 analysis, and they have the
         longest lead time of anything on this list. (\S\ref{sec:outside})
-  \item \textbf{Build the remaining two attack families} --- model inversion and reconstruction ---
+  \item \textbf{Build the remaining two attack families} model inversion and reconstruction
         so that the audit covers what EDPB Opinion 28/2024 actually names. Consider also a
         likelihood-ratio attack as a stronger membership test. (\S\ref{sec:anontest})
   \item \textbf{Obtain the analytics work package's indicator specification} and apply the same
         accountant and a cell-suppression analysis to it. Until then, half of the assessment's
-        framing is unanswered. (\S\ref{sec:aggdisclosure})
+        framing is unanswered.
   \item \textbf{Confirm the round count on real data.} Convergence by round~10 is the cheapest
         privacy improvement available and it is currently a synthetic-data finding.
         (\S\ref{sec:reduce})
   \item \textbf{Evaluate subsampling amplification.} Participation below 1.0 earns a real budget
         reduction the accountant can now credit; the cost is convergence speed. (\S\ref{sec:reduce})
-  \item \textbf{Re-run the whole evidence base on the pilot cohort} once real data exists ---
+  \item \textbf{Re-run the whole evidence base on the pilot cohort} once real data exists
         accuracy, budget and audit alike. The right-hand column of \S\ref{sec:realdata} is the
         checklist.
   \item \textbf{Implement FedMosaic's own DP construction} if that protocol is to be considered on
@@ -57,7 +55,7 @@ listed so that the record is complete; 6--12 are open.
   DP measurement (2), accounting (3), amplification (11) & T2.3 & MS4 \\
   Leakage audit (4), remaining attacks (7) & T2.5 & MS4 onward \\
   Side channels (5) & T2.3 / data collection & before MS3 \\
-  Analytics indicator spec (8) & analytics work package & --- \\
+  Analytics indicator spec (8) & analytics work package &  \\
   Re-run on pilot cohort (12) & T2.4 & MS5 (month 24) \\
   \bottomrule
 \end{tabular}

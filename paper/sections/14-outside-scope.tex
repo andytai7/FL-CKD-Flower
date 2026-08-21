@@ -1,0 +1,34 @@
+\question{What lies outside this report's technical scope?}
+\label{sec:outside}
+\statusOutside
+
+\begin{shortanswer}
+There are four questions that need to be answered
+\end{shortanswer}
+
+\subsection{A decision the consortium has not yet taken}
+
+The allocation of controller, joint-controller and processor roles under Art.~26/28 turns on
+\textbf{who operates the SuperLink host} is docport, or IKIM/KITE. That decision has not been made,
+so the question is not merely legal but not yet decidable. The technical facts bearing on it:
+
+\begin{itemize}
+  \item Whoever operates the host is the party that, on the default configuration, receives
+        individual attributable updates (\S\ref{sec:isolation}).
+  \item With secure aggregation enabled, that party receives only the aggregate which may
+        materially change the analysis, and is the strongest reason to take the configuration
+        decision early rather than at Milestone~4.
+  \item The node registry mapping public keys to admitted practices is centrally held by that
+        operator, independently of the model path.
+\end{itemize}
+
+\subsection{Facts about a deployment that does not exist}
+
+The assessment's fourth documented item administrative access, logging and export capabilities
+on the SuperLink is the one item this report cannot close. We can document the full
+\textbf{capability surface}, and Appendix~\ref{sec:config} does: the state database, log files and
+rotation, run log retrieval, run listing and termination, and the node registry commands.
+
+Also, the \textbf{real per-practice cohort sizes}, which are an MS3/MS5 fact about the world
+and the input that decides whether a meaningful budget is reachable; and the \textbf{practices' own
+IT environments}.

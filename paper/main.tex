@@ -1,5 +1,6 @@
 %% FLIP-IT — Technical Expert Report
-%% Build: pdfLaTeX + biber.  Overleaf: upload this directory, compiler pdfLaTeX.
+%% Build: pdfLaTeX + bibtex (backend=bibtex, so no biber install needed).  Overleaf: upload this
+%% directory, compiler pdfLaTeX; the bibtex step is detected automatically.
 %% Every number in the prose comes from generated/macros.tex — never type one in by hand.
 %% Regenerate figures, tables and macros with:  uv run python paper/make_paper.py
 \documentclass[11pt,a4paper]{article}
@@ -21,7 +22,7 @@
 \usepackage{amsmath}
 \usepackage{hyperref}
 
-\usepackage[backend=biber,style=numeric,sorting=none]{biblatex}
+\usepackage[backend=bibtex,style=numeric,sorting=none]{biblatex}
 \addbibresource{refs.bib}
 
 \graphicspath{{figures/}}
@@ -56,13 +57,13 @@
 %% \status — every section declares what kind of claim it is making.
 \newcommand{\statuschip}[2]{{\small\textcolor{#1}{\textbf{#2}}}}
 \newcommand{\statusMethod}{\statuschip{accent}{Methodology-determined}%
-  {\small\textcolor{muted}{ --- true of the method regardless of the data}}\par\medskip}
+  {\small\textcolor{muted}{ true of the method regardless of the data}}\par\medskip}
 \newcommand{\statusMeasured}{\statuschip{accent}{Measured on the test bed}%
-  {\small\textcolor{muted}{ --- synthetic data, \NumSeeds{} seeds; see \S\ref{sec:limits}}}\par\medskip}
+  {\small\textcolor{muted}{ synthetic data, \NumSeeds{} seeds; see \S\ref{sec:limits}}}\par\medskip}
 \newcommand{\statusDeployment}{\statuschip{warn}{Requires the deployment}%
-  {\small\textcolor{muted}{ --- depends on decisions not yet taken}}\par\medskip}
+  {\small\textcolor{muted}{ depends on decisions not yet taken}}\par\medskip}
 \newcommand{\statusOutside}{\statuschip{warn}{Outside technical scope}%
-  {\small\textcolor{muted}{ --- stated as a boundary, with the facts needed to decide it}}\par\medskip}
+  {\small\textcolor{muted}{ stated as a boundary, with the facts needed to decide it}}\par\medskip}
 
 %% A marked box for material addressed to another work package rather than to counsel.
 \newtcolorbox{sidenote}[1]{enhanced, breakable, colback=white, colframe=muted,
@@ -92,7 +93,7 @@ across regional GP practices\par}
 transmitted by Dr.~N.~Conze, docport GmbH.
 
 \vspace{18pt}
-{\large\bfseries Prepared by:} the FLIP-IT technical work package.
+{\large\bfseries Prepared by:} Dr.~Andy Man Yeung Tai
 
 \vspace{18pt}
 {\large\bfseries Status:} Preliminary engineering findings. \textbf{Not legal advice.}\\
@@ -101,7 +102,7 @@ This document supplies facts for the legal assessment; it does not draw legal co
 \vspace{12pt}
 {\large\bfseries Basis:} \texttt{FL-CKD-Flower}, the pre-kickoff methodology test bed.\\
 Verified against Flower \FlwrVersion{}. Measurements are \textbf{synthetic}.\\
-Run of \RunDate{} --- see Appendix~\ref{sec:repro}.
+Run of \RunDate{} see Appendix~\ref{sec:repro}.
 
 \vspace{12pt}
 \noindent\rule{\textwidth}{0.6pt}
@@ -133,14 +134,13 @@ questions that no amount of engineering here can close.
 \input{sections/06-noise-placement}
 \input{sections/07-budget}
 \input{sections/08-reducing-epsilon}
-\input{sections/09-aggregate-disclosure}
-\input{sections/10-side-channels}
-\input{sections/11-does-it-work}
-\input{sections/12-model-choice}
-\input{sections/13-anonymisation-test}
-\input{sections/14-real-data}
-\input{sections/15-outside-scope}
-\input{sections/16-recommendations}
+\input{sections/09-side-channels}
+\input{sections/10-does-it-work}
+\input{sections/11-model-choice}
+\input{sections/12-anonymisation-test}
+\input{sections/13-real-data}
+\input{sections/14-outside-scope}
+\input{sections/15-recommendations}
 \input{sections/99-appendix}
 
 \printbibliography[heading=bibintoc]

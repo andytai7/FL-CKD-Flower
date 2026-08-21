@@ -7,7 +7,7 @@ At clipping norm 1.0 and $\delta = 10^{-5}$ over \DPRounds{} rounds, the budget 
 effectively unbounded down to $\varepsilon = \EpsAtSigmaTwo{}$ at noise multiplier $\sigma = 2.0$,
 where global AUROC is \AUCAtSigmaTwo{}. These figures come from a R\'enyi-DP accountant. They
 supersede the figures circulated previously, which were computed by a hand-rolled composition that
-was not merely loose but --- at low noise --- \textbf{outside the range in which the underlying
+was not merely loose but at low noise \textbf{outside the range in which the underlying
 formula is valid at all}. The mechanism has not changed; only the accounting is now correct.
 \end{shortanswer}
 
@@ -22,7 +22,7 @@ Composing that over \DPRounds{} rounds is where the accounting choice bites. We 
 accountant \cite{mironov2017rdp} as implemented in Google's \texttt{dp\_accounting}
 \cite{dpaccounting}: it tracks the full R\'enyi divergence curve across rounds and converts to
 $(\varepsilon, \delta)$ once at the end, rather than paying a union bound every round. We use an
-independently maintained, widely reviewed implementation deliberately --- it is more defensible to a
+independently maintained, widely reviewed implementation deliberately it is more defensible to a
 data-protection reviewer than arithmetic of our own.
 
 \begin{table}[htbp]
@@ -38,12 +38,12 @@ data-protection reviewer than arithmetic of our own.
 
 \paragraph{Where both are meaningful, the accountant is 2--4$\times$ tighter.}
 At $\sigma = 2.0$ over \DPRounds{} rounds the budget is $\varepsilon = \EpsAtSigmaTwo{}$, not the
-\EpsAtSigmaTwoNaive{} previously reported --- at identical noise and identical utility. Nothing about
+\EpsAtSigmaTwoNaive{} previously reported at identical noise and identical utility. Nothing about
 the protection changed; the earlier number simply overstated the loss.
 
 \paragraph{At low noise, the previous figures were not a bound at all.}
 The classical Gaussian-mechanism expression $\varepsilon_1 = \sqrt{2\ln(1.25/\delta)}/\sigma$ is
-valid only for $\varepsilon_1 \le 1$. Every row of the earlier table violated that badly --- at
+valid only for $\varepsilon_1 \le 1$. Every row of the earlier table violated that badly at
 $\sigma = 0.1$ the per-round $\varepsilon_1$ alone is around 48. Those figures were therefore not
 conservative; they were outside the regime in which the formula asserts anything. This is why the
 low-noise rows now report a \emph{larger} $\varepsilon$ than before, which looks like a regression
@@ -55,7 +55,7 @@ this report should be re-checked. The current figures are reproducible from the 
 
 \subsection{Reading the table honestly}
 
-The comfortable reading is that DP is nearly free --- at $\sigma \le 0.25$ the model loses
+The comfortable reading is that DP is nearly free at $\sigma \le 0.25$ the model loses
 essentially no accuracy. That reading is wrong, and the $\varepsilon$ column is why: those settings
 carry budgets in the hundreds, which is not a meaningful guarantee in any ordinary sense. The
 direction of travel is unforgiving. Pushing $\varepsilon$ down means pushing $\sigma$ up, and by

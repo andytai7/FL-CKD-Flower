@@ -38,8 +38,9 @@ grep -nE '[0-9]\.[0-9]{2,}' sections/*.tex     # should match only layout and fo
 ./scripts/paper-zip.sh          # -> flip-it-expert-report.zip
 ```
 
-Upload that zip. Set the compiler to **pdfLaTeX**; the bibliography uses biber, which Overleaf
-selects automatically. Only standard CTAN packages are used.
+Upload that zip. Set the compiler to **pdfLaTeX**; the bibliography uses bibtex via
+`backend=bibtex`, which Overleaf selects automatically (no biber install needed anywhere). Only
+standard CTAN packages are used.
 
 The zip deliberately **includes** `figures/`, `tables/` and `generated/` — an Overleaf project must
 typeset without running Python — and excludes the cached run (`generated/data.json`, several MB and

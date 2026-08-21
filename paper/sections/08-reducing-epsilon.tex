@@ -6,8 +6,8 @@
 The cheapest lever is the round count, and it is free. The logistic protocols are fully converged by
 round~10, but the configuration ran to \DPRounds{} and beyond; since every round composes additional
 privacy loss, halving the round count roughly halves the budget at \emph{no measured accuracy cost}.
-That change is now the default. Beyond it, the levers are more practices --- the pilot's
-twenty-five rather than today's \NumPractices{} --- and subsampling amplification, which the new
+That change is now the default. Beyond it, the levers are more practices the pilot's
+twenty-five rather than today's \NumPractices{} and subsampling amplification, which the new
 accountant can credit but the current full-participation configuration does not earn.
 \end{shortanswer}
 
@@ -18,7 +18,7 @@ accountant can credit but the current full-participation configuration does not 
   \includegraphics[width=\textwidth]{convergence}
   \caption{AUROC by round, \NumSeeds{} seeds, shaded $\pm$ 1 s.d. The logistic protocols are flat
   from round~10 onward. The tree-based protocol \emph{degrades} with more rounds. FedAvg is not
-  missing --- it lies underneath FedProx, which is the null result reported in
+  missing it lies underneath FedProx, which is the null result reported in
   \S\ref{sec:modelchoice}: the two agree to three decimals.}
   \label{fig:convergence}
 \end{figure}
@@ -35,14 +35,14 @@ the round-10 figure and the round-\MaxRounds{} figure agree to three decimals. T
 composed forty extra rounds of privacy loss and returned nothing.
 
 \textbf{The deployment default is now 10 rounds.} At $\sigma = 2.0$ this takes the composed budget
-from \EpsAtSigmaTwo{} to approximately 8.1 --- the largest single improvement available, at zero
+from \EpsAtSigmaTwo{} to approximately 8.1 the largest single improvement available, at zero
 accuracy cost and zero engineering risk.
 
 One protocol behaves differently and it is worth noting here because it interacts with the same
 lever: the tree-based protocol peaks early and then degrades monotonically, because each round
 appends every practice's newly grown trees to one ensemble and, under non-IID data, those trees
 encode contradictory local rules. More rounds means more contradiction. For that protocol the round
-count is a hyperparameter to tune \emph{down}, not up --- but \S\ref{sec:modelchoice} recommends
+count is a hyperparameter to tune \emph{down}, not up but \S\ref{sec:modelchoice} recommends
 against deploying it at all.
 
 \subsection{The other levers, in order of effect}
@@ -67,6 +67,6 @@ against deploying it at all.
 Throughout, the constraint that binds first is not the mean but the \emph{worst practice}. Global
 AUROC degrades gently with noise; the worst practice degrades sharply and with much larger variance.
 Since the project's premise is that small practices should get a model they could not build alone,
-the worst-practice figure is the one that decides whether a privacy setting is deployable --- and it
+the worst-practice figure is the one that decides whether a privacy setting is deployable and it
 is also the T2.5 fairness measure. Any budget proposal should be evaluated against that column, not
 against the headline.

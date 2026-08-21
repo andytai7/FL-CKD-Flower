@@ -6,8 +6,8 @@
 This is the single most important technical distinction in this report. \textbf{Central DP does not
 answer the central question.} Its noise is applied by the server \emph{as it aggregates}, so the
 server necessarily receives every practice's un-noised update first; it constrains what can be
-inferred from the published model, not what the aggregating party sees. Only \textbf{local DP} ---
-noise added inside the practice's own SuperNode, before transmission --- changes that, and it is now
+inferred from the published model, not what the aggregating party sees. Only \textbf{local DP}
+noise added inside the practice's own SuperNode, before transmission changes that, and it is now
 implemented and measured. It is expensive: at a genuinely meaningful budget the worst practice falls
 to \LocalWorstOne{}, below the \LocalWorst{} it achieves by not collaborating at all.
 \end{shortanswer}
@@ -21,9 +21,9 @@ to \LocalWorstOne{}, below the \LocalWorst{} it achieves by not collaborating at
     \toprule
     Mechanism & Where the noise is applied & Server still sees the individual update? & Status \\
     \midrule
-    Central DP & Server, \emph{during} aggregation & \textbf{Yes --- un-noised} & measured \\
-    Local DP & \textbf{Inside the SuperNode, before transmission} & \textbf{No --- noised at source} & measured \\
-    Secure aggregation & Cryptographic masking across practices & No --- only the sum & implemented \\
+    Central DP & Server, \emph{during} aggregation & \textbf{Yes un-noised} & measured \\
+    Local DP & \textbf{Inside the SuperNode, before transmission} & \textbf{No noised at source} & measured \\
+    Secure aggregation & Cryptographic masking across practices & No only the sum & implemented \\
     \bottomrule
   \end{tabular}
   \caption{Only the second and third change what the aggregating party receives. This distinction is
@@ -78,19 +78,19 @@ that each practice must satisfy alone.
 
 \subsection{The finding the consortium needs to act on}
 
-At $\varepsilon \approx \LocalEpsOne{}$ --- the first genuinely defensible budget in either table
---- local DP takes global AUROC to \LocalAUCOne{} and the worst practice to \LocalWorstOne{}. A practice that trains entirely alone
+At $\varepsilon \approx \LocalEpsOne{}$ the first genuinely defensible budget in either table
+local DP takes global AUROC to \LocalAUCOne{} and the worst practice to \LocalWorstOne{}. A practice that trains entirely alone
 reaches \LocalWorst{}. \textbf{At this cohort size, local DP at a meaningful budget produces a model
 worse than not collaborating}, which would defeat the project's premise.
 
 This is a finding, not a failure of the implementation: the mechanism works, and what it reveals is
 that ten practices totalling \NumPatients{} patients is too little population to hide an individual
-in. The lever is cohort size --- the funded pilot's twenty-five practices --- and it should be
+in. The lever is cohort size the funded pilot's twenty-five practices and it should be
 surfaced now rather than at Milestone~4. Secure aggregation, whose cost is bandwidth and coordination
 rather than accuracy, carries much more of the load at this scale.
 
 \begin{sidenote}{Not yet implemented}
-FedMosaic specifies its own per-round DP construction --- an XOR mechanism on the label matrix and
+FedMosaic specifies its own per-round DP construction an XOR mechanism on the label matrix and
 Gaussian noise on the expertise vector. This test bed does not implement it, so FedMosaic's privacy
 case here rests on payload shape alone (\S\ref{sec:payload}), not on a formal guarantee.
 \end{sidenote}

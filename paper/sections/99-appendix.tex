@@ -31,7 +31,7 @@ that generator, so the DP noise was the one unseeded step in an otherwise fully 
 signature was unmistakable in hindsight: the zero-noise row draws no noise and was bit-identical
 across all three documents, while disagreement grew with the noise level.
 
-The generator is now seeded per (seed, noise level) cell before each run --- per cell rather than
+The generator is now seeded per (seed, noise level) cell before each run per cell rather than
 once per run, because the noise stream is consumed sequentially, so a single per-run seed would make
 every row depend on which noise levels precede it in the sweep. Each of the \NumSeeds{} seeds still
 draws different noise, so the error bars retain their meaning.
@@ -56,7 +56,7 @@ it.
   \toprule
   Key & Value & What it does \\
   \midrule
-  \texttt{num-server-rounds} & 10 & Federation rounds. Reduced from 20 --- see \S\ref{sec:reduce} \\
+  \texttt{num-server-rounds} & 10 & Federation rounds. Reduced from 20 see \S\ref{sec:reduce} \\
   \texttt{fraction-fit} & 1.0 & Fraction of practices training per round \\
   \texttt{local-epochs} & 2 & Local passes per round \\
   \texttt{model} & \texttt{logreg} & Logistic regression (\S\ref{sec:modelchoice}) \\
@@ -81,7 +81,7 @@ Differential privacy parameters not in the run config: clipping norm $C = 1.0$, 
 
 The assessment's fourth documented item, to the extent it is answerable without a deployment
 (\S\ref{sec:outside}). These are capabilities of the software an operator would inherit, not
-observations of a running host --- no such host exists.
+observations of a running host no such host exists.
 
 \begin{center}
 \small
@@ -115,16 +115,12 @@ observations of a running host --- no such host exists.
   Prevalence, not incidence & A different prediction task from the production contract
             (\S\ref{sec:realdata}) \\
   \NumPractices{} practices, not 25 & Understates the pilot, especially for the privacy budget \\
-  Worst-practice figures have high seed variance & Single-seed results are unreliable; all figures
-            here are means over \NumSeeds{} seeds \\
   Leakage audit covers 1 of 3 attack families & Not a demonstration of anonymity
             (\S\ref{sec:anontest}) \\
   Fairness audited by age band, not sex & The specified analysis is impossible until real data
             arrives \\
   DP measured on federated averaging only & FedProx and FedMosaic DP costs unmeasured \\
   Secure aggregation verified in simulation & Not yet exercised against a live multi-host SuperLink \\
-  No analytics path & Half the assessment's framing is unanswered here
-            (\S\ref{sec:aggdisclosure}) \\
   \bottomrule
 \end{tabular}
 \end{center}

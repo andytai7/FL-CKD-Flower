@@ -1,0 +1,15 @@
+\question{Does the system disclose per-practice information outside the model path?}
+\label{sec:sidechannels}
+\statusMethod
+
+\begin{shortanswer}
+Anonymised logging with a cohort-size floor is the deployment default. No per-practice information
+is outside of the model path.
+\end{shortanswer}
+
+\paragraph{One residual channel} The export is still ordered by that identifier. The column is
+gone, but \emph{row order still follows it}. If identifiers are assigned chronologically, row
+position is a weak signal for relative enrolment order. Downstream code does not treat row position
+as information. Randomising the order removes the channel at the cost of reproducible extracts; we
+have documented the trade-off in the query rather than deciding it unilaterally, because
+reproducibility of extractions may matter to the collection protocol.

@@ -5,7 +5,7 @@
 \begin{shortanswer}
 Logistic regression under FedProx or FedAvg. The legally useful fact is that this recommendation is
 \textbf{over-determined}: the same choice wins on accuracy, on bandwidth, on disclosure surface, and
-on protectability. There is no trade-off here in which privacy is bought with performance --- the
+on protectability. There is no trade-off here in which privacy is bought with performance the
 model that federates best is also the only one secure aggregation can protect.
 \end{shortanswer}
 
@@ -19,15 +19,15 @@ the local epoch count increases, since that is the condition under which the ter
 matter.
 
 \paragraph{FedMosaic does not win on accuracy, and its case is elsewhere.} It reaches \MosaicAUC{}
-global --- slightly below the weight-sharing protocols, at \UplinkMosaic{} bits per round against
+global slightly below the weight-sharing protocols, at \UplinkMosaic{} bits per round against
 \UplinkLogreg{}. Its argument is its disclosure profile: it
 never transmits a model at all, only predictions on an already-public cohort (\S\ref{sec:payload}).
 That is a qualitative difference, and if the legal analysis ends up treating parameter vectors as
 personal data while treating predictions on public patients differently, FedMosaic becomes worth
-revisiting on those grounds --- not on these.
+revisiting on those grounds not on these.
 
 \paragraph{Do not deploy the tree-based protocol.} Its pooled ceiling matches logistic regression
-(\CeilingXGB{} against \CeilingAUC{}), so the model class is not the problem --- but federated it
+(\CeilingXGB{} against \CeilingAUC{}), so the model class is not the problem but federated it
 reaches only \XGBAUC{} with a worst practice of \XGBWorst{}, it \emph{degrades} with additional
 rounds (\S\ref{sec:reduce}), it costs \UplinkXGB{} bits per round against \UplinkLogreg{}, its split
 thresholds are literal patient values, and secure aggregation cannot protect it at all

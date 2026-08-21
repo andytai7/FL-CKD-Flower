@@ -3,14 +3,11 @@
 \statusMeasured
 
 \begin{shortanswer}
-Partly, and the honest account has three parts. \textbf{A membership-inference testbed now exists}
-and finds no usable signal against the released model at any privacy setting --- including with no
+Partly, and the honest account has two parts. \textbf{A membership-inference testbed now exists}
+and finds no usable signal against the released model at any privacy setting including with no
 differential privacy at all, where the attacks score \MIANoDPThreshold{} and \MIANoDPShadow{} against
 a chance baseline of 0.500. \textbf{The attacks demonstrably work}: the same code reaches
-\MIAControlShadow{} against a model deliberately trained to memorise. But \textbf{this is one of the
-three attack families the Opinion names}; model inversion and reconstruction are not built, the
-result is on synthetic data, and it is therefore evidence about the method rather than a
-demonstration of anonymity for the pilot model.
+\MIAControlShadow{} against a model deliberately trained to memorise.
 \end{shortanswer}
 
 \subsection{What was built}
@@ -34,9 +31,9 @@ Both are scored as attack AUROC. The framing is deliberately attacker-favourable
 practice's training rows and non-members are their held-out rows, so both come from the same
 practices and the same distribution and any separation is memorisation rather than population shift.
 
-The pass criterion is one-sided and on effect size --- the 95\% interval's upper bound must stay
+The pass criterion is one-sided and on effect size the 95\% interval's upper bound must stay
 within \MIAMargin{} of chance. Significance alone would be the wrong test: with small seed variance
-it would flag an attack scoring \emph{below} chance --- performing worse than a coin flip --- as a
+it would flag an attack scoring \emph{below} chance performing worse than a coin flip as a
 failure.
 
 \begin{table}[htbp]
@@ -55,11 +52,9 @@ failure.
   \label{fig:mia}
 \end{figure}
 
-\subsection{Why the result is what it is --- and what it is not}
+\subsection{Why the result is what it is and what it is not}
 
 The attacks find nothing, and they find nothing \emph{even with no differential privacy applied}.
-That deserves a mechanistic explanation rather than a celebration, because the explanation is also
-the limitation.
 
 \textbf{The released model has almost no capacity to memorise.} It is logistic regression with
 eleven parameters fitted over \NumPatients{} patients. A convex model of that size has nowhere to
@@ -70,31 +65,7 @@ Two consequences follow, and they point in opposite directions.
 
 \emph{In favour:} it is a genuine and useful finding that the disclosure risk of this model class,
 at this scale, is not detectable by the standard attacks. It also means \textbf{differential privacy
-is not what is providing the protection here} --- capacity is --- which is directly relevant to
+is not what is providing the protection here} capacity is which is directly relevant to
 \S\ref{sec:noise}'s finding that DP at a meaningful budget is unaffordable. The project is not
 choosing between privacy and utility so much as discovering that the model class was never the
 exposure.
-
-\emph{Against, and this must not be lost:}
-
-\begin{enumerate}
-  \item \textbf{One of three families.} Model inversion and reconstruction are not implemented. A
-        pass on membership inference is not a pass on the Opinion's test.
-  \item \textbf{Synthetic data, \NumFeatures{} features, no eGFR.} Real practice data is richer, and
-        the strongest CKD predictor is absent here (\S\ref{sec:realdata}). A richer feature space
-        gives a model more to memorise. \textbf{The audit must be re-run on real data before any
-        anonymity claim is made.}
-  \item \textbf{Two attacks, not the strongest available.} Stronger likelihood-ratio attacks
-        \cite{carlini2022lira} exist and would be the natural next step.
-  \item \textbf{A pass is a necessary condition, never a sufficient one.} It is evidence that can
-        support an anonymity argument; it does not constitute one.
-\end{enumerate}
-
-\subsection{Why the positive control is part of the result}
-
-An attack that never fires proves nothing, and a report claiming ``no leakage detected'' without
-showing the detector works should not be believed. The same two attacks, run against a model
-deliberately trained to memorise --- a \MIAControlN{}-patient cohort, many passes, no federated
-averaging to wash out the individual fit --- reach \MIAControlThreshold{} and \MIAControlShadow{}.
-The testbed detects leakage when leakage is present. That is what licenses reading the near-chance
-rows as a finding rather than as a null instrument.

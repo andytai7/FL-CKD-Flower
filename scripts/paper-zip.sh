@@ -18,4 +18,4 @@ zip -r "$OUT" paper \
      'paper/main.pdf' \
   >/dev/null
 echo "wrote $OUT ($(du -h "$OUT" | cut -f1))"
-echo "Upload to Overleaf, set the compiler to pdfLaTeX. Bibliography uses biber (automatic)."
+echo "Upload to Overleaf, set the compiler to pdfLaTeX. Bibliography uses bibtex (automatic)."

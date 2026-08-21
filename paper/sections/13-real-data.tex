@@ -1,0 +1,48 @@
+\question{What changes when real practice data replaces the synthetic cohort?}
+\label{sec:realdata}
+\statusMeasured
+
+\begin{shortanswer}
+Structurally, nothing: who sees what, what is on the wire, and whether secure aggregation and DP
+apply are properties of the protocol, not of the data. Every accuracy number is expected to move
+up, and the leakage audit must be re-run, and only the twenty-five-practice cohort will tell us
+whether a meaningful privacy budget is reachable at all.
+\end{shortanswer}
+
+\subsection{What are we predicting?}
+
+The synthetic label is \textbf{CKD stage $\ge$ 3 prevalence} does this patient have it now. The
+production contract defines \textbf{incidence}: among patients with no prior CKD diagnosis at a
+rolling landmark date, does one appear within the following year.
+
+\subsection{Which conclusions survive the move, and which do not}
+
+\begin{center}
+\small
+\begin{tabular}{p{6.6cm}p{6.6cm}}
+  \toprule
+  \textbf{Data-invariant holds for the pilot} & \textbf{Data-dependent must be re-measured} \\
+  \midrule
+  The aggregating party receives individual, attributable updates unless secure aggregation is
+  enabled (\S\ref{sec:isolation})
+  & Every AUROC figure, global and worst-practice \\
+  \addlinespace
+  Central DP does not change what the server receives; only local DP does (\S\ref{sec:noise})
+  & The achievable $\varepsilon$, which depends on real cohort sizes \\
+  \addlinespace
+  Payload shape per protocol, and that tree split thresholds are literal patient values
+  (\S\ref{sec:payload})
+  & The utility cost of local DP at the pilot's scale \\
+  \addlinespace
+  Secure aggregation is available, semi-honest, leaves participation visible, and cannot protect
+  trees (\S\ref{sec:secagg})
+  & The membership-inference result, with eGFR present (\S\ref{sec:anontest}) \\
+  \addlinespace
+  Flower Labs has no access path in a self-hosted deployment (\S\ref{sec:flowerlabs})
+  & Whether logistic regression remains the right model class \\
+  \addlinespace
+  Fewer rounds reduces the budget proportionally
+  & How many rounds convergence actually needs on real data \\
+  \bottomrule
+\end{tabular}
+\end{center}
