@@ -50,8 +50,13 @@ Four things worth knowing before you read further:
   protocol by 0.019; the *worst practice* separates them by **+0.180**.
 - **More rounds do not help.** The logistic protocols converge by round 10; XGBoost actively
   *degrades* with more rounds (0.780 at round 5 → 0.686 at round 50).
-- **The differential-privacy budget is the open risk** for Milestone 4 — the utility cost is small,
-  but the achievable ε is far too large at this cohort size.
+- **Differential privacy has a deployment standard**: patient-level DP-SGD inside each clinic,
+  SecAgg+ masking on the wire, and a rule-based server agent ([`dpsgd.py`](dpsgd.py) +
+  [`orchestrator.py`](orchestrator.py)) — deterministic census → ε-policy → per-clinic accountant
+  inversion → ConfigRecord dispatch; no LLM — that standardises the composed ε across clinic sizes.
+  Measured in [`notebooks/03_dpsgd_secagg_standard.ipynb`](notebooks/03_dpsgd_secagg_standard.ipynb):
+  AUROC 0.797–0.799 holds at composed ε 0.5–8 over 5 seeds. Central and local DP remain as measured
+  comparison baselines in `privacy.py` / notebook 02.
 
 ## Quick start
 
@@ -86,11 +91,13 @@ uv run ckd-simulate --help                  # all flags
 
 uv run ckd-baseline --model all --clinics   # pooled ceiling on the SAME data
 uv run ckd-benchmark --rounds 20            # full protocol benchmark -> results/
-uv run ckd-privacy --seeds 42 43 44 45 46   # central + local DP sweeps, SecAgg probe -> results/
+uv run ckd-privacy --seeds 42 43 44 45 46   # central + local DP comparison baselines, SecAgg probe -> results/
 uv run ckd-audit   --seeds 42 43 44 45 46   # membership-inference leakage audit -> results/
 
 uv run flwr run . --run-config "secure-aggregation=true"   # SecAgg+: server sees only the sum
 uv run flwr run . --run-config "local-dp-epsilon=5.0"      # noise inside the SuperNode
+uv run flwr run . --run-config "min-train-examples=50"     # exclude practices smaller than 50 patients
+uv run flwr run . --run-config "central-dp-epsilon=8"       # server derives the noise to meet the budget
 
 ./scripts/paper.sh --recompute              # rebuild the expert report's figures/tables/numbers
 
@@ -145,8 +152,10 @@ Two execution modes:
 | `client_app.py` / `server_app.py` | Flower `ClientApp` / `ServerApp` on the 1.33 Message API |
 | `simulate.py` | In-process runner over Flower's real strategies → `ckd-simulate` |
 | `benchmark.py` | Protocol benchmark → `ckd-benchmark` → `results/benchmark.json` |
-| `privacy.py` | Central + local DP sweeps, RDP accountant, SecAgg+ probe → `ckd-privacy` |
+| `privacy.py` | Central + local DP sweeps (comparison baselines to the DP-SGD standard), RDP accountant, SecAgg+ probe → `ckd-privacy` |
 | `audit.py` | Membership-inference leakage audit (T2.5 / layer L6) → `ckd-audit` |
+| `dpsgd.py` | Patient-level DP-SGD (Poisson sampling, per-sample clipping, Gaussian noise) + in-process runner emulating SecAgg masked-sum over Flower's real FedAvg |
+| `orchestrator.py` | Rule-based server agent (no LLM): deterministic census → ε-policy → accountant inversion → ConfigRecord dispatch; per-clinic (batch, σ) plans so every clinic composes to the same target ε; `DpsgdOrchestrator(FedAvg)` |
 | `paper/` | The Technical Expert Report (LaTeX). `make_paper.py` generates every figure, table and inline number from one run |
 | `centralized.py` | Pooled-data ceilings → `ckd-baseline` |
 | `messages.py` | The Flower `Message` shapes the in-process runners exchange |
@@ -156,7 +165,8 @@ Two execution modes:
 | `models/protocols/` | The protocol benchmark, incl. `fedmosaic.py` (a Flower `Strategy` subclass) |
 | `extract_features.sql` | Canonical feature contract for the **real** Tomedo→PostgreSQL export |
 | `docs/` | `REPORT.md`, `PRIVACY.md`, `DEPLOYMENT.md`, `LEGAL-TECHNICAL-ANSWER.md` (superseded) + source PDFs |
-| `notebooks/` | Interactive federation walkthrough |
+| `notebooks/` | Interactive federation walkthrough; `03_dpsgd_secagg_standard.ipynb` measures the DP-SGD + SecAgg + orchestrator standard live |
+| `diagrams/` | Architecture draw.io diagram of the DP-SGD + SecAgg + orchestrator standard |
 
 ---
 
@@ -193,5 +203,11 @@ authentication throughout. Full runbook — certificates, key registration, `~/.
 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
 
 Each SuperNode can read its cohort from the practice's own **FHIR server** (`data-source=fhir`)
-instead of a CSV; the mapping lives in `data/fhir_loader.py` and produces the same schema, so
-nothing downstream changes.
+instead of a CSV; the mapping lives in `data/fhir_loader.py` and emits the **canonical
+`extract_features.sql` contract** — labs, `geschlecht`, and the incidence label — de-identified
+at the source: no identifier is ever read, rows are keyed positionally in a hash order, and an
+optional per-practice `pseudonym-salt` (`--node-config`) enables the salted-HMAC join key named in
+[PRIVACY.md](docs/PRIVACY.md) §2. `to_xy` dispatches on the schema, so models and the client
+builder consume either path unchanged (CLAUDE.md §3b: the two schemas are different prediction
+tasks). Rehearse an extraction on the practice box with
+`uv run ckd-fhir-extract http://localhost:8080/fhir`.

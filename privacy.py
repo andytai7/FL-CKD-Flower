@@ -30,6 +30,7 @@ from flwr.serverapp.strategy import DifferentialPrivacyServerSideFixedClipping, 
 
 from client_app import _local_split
 from data import load_clinic_frames, to_xy
+from dp import CLIPPING_NORM, DELTA, epsilon_basic_composition, epsilon_rdp
 from messages import evaluate_reply, hushed, local_dp_train_reply, train_reply
 from models.protocols.common import (
     LogRegLocal,
@@ -45,72 +46,11 @@ logging.getLogger("flwr").setLevel(logging.ERROR)
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
 LEARNING_RATE = 0.5
-CLIPPING_NORM = 1.0
-# δ is conventionally set below 1/n; the clinics cohort is ~3.5k patients, so 1e-5 is comfortable.
-DELTA = 1e-5
 NOISE_MULTIPLIERS = (0.0, 0.1, 0.25, 0.5, 1.0, 2.0)
 # Local DP is parameterised by epsilon directly (not by a noise scale), so the sweep is over
 # the budget itself. None = the no-DP reference row.
 LOCAL_DP_EPSILONS = (None, 50.0, 20.0, 10.0, 5.0, 1.0)
 
-
-def epsilon_basic_composition(
-    noise_multiplier: float, rounds: int, delta: float = DELTA
-) -> float | None:
-    """The naive Gaussian-mechanism bound: per-round eps1, composed linearly.
-
-    Per-round eps1 = sqrt(2 ln(1.25/delta))/sigma for the Gaussian mechanism at sensitivity 1
-    (updates are clipped to `CLIPPING_NORM`), composed over rounds by **basic composition**,
-    eps = rounds * eps1.
-
-    Retained only so the report can show what changed and why. **It is not a valid bound over the
-    range this project sweeps**: the classical Gaussian-mechanism analysis
-    eps1 = sqrt(2 ln(1.25/delta))/sigma holds only for eps1 <= 1, and every row of the old table
-    violated that badly (at sigma=0.1 the per-round eps1 alone is ~48). So the old figures were not
-    conservative, they were simply outside the regime where the formula says anything.
-
-    Where both are meaningful (larger sigma, smaller eps) `epsilon_rdp` is 2-4x tighter at
-    identical noise; at small sigma the naive expression actually reports *less* than the
-    accountant. Use `epsilon_rdp`. This exists for the audit trail, not for quotation.
-    """
-    if noise_multiplier <= 0:
-        return None
-    per_round = math.sqrt(2.0 * math.log(1.25 / delta)) / noise_multiplier
-    return per_round * rounds
-
-
-def epsilon_rdp(
-    noise_multiplier: float,
-    rounds: int,
-    delta: float = DELTA,
-    sampling_probability: float = 1.0,
-) -> float | None:
-    """(eps, delta) from a Renyi-DP accountant — the value this project reports.
-
-    Uses Google's `dp_accounting` rather than our own arithmetic: an independently maintained,
-    widely reviewed implementation is easier to defend to a data-protection reviewer than a
-    hand-rolled composition, and it is what EDPB-facing documentation is expected to rest on.
-
-    The mechanism is unchanged — same clipping norm, same Gaussian noise. Only the *accounting* is
-    tighter: RDP tracks the full Renyi divergence curve and converts once at the end, instead of
-    paying the union bound every round.
-
-    `sampling_probability` < 1 credits privacy amplification by subsampling, which applies when
-    `fraction-fit` < 1 so that a given practice is not in every round. At the sweep's
-    `fraction-fit = 1.0` there is no amplification to credit and q = 1.0.
-    """
-    if noise_multiplier <= 0:
-        return None
-
-    from dp_accounting import dp_event, rdp
-
-    gaussian = dp_event.GaussianDpEvent(noise_multiplier)
-    if sampling_probability < 1.0:
-        gaussian = dp_event.PoissonSampledDpEvent(sampling_probability, gaussian)
-
-    accountant = rdp.RdpAccountant()
-    accountant.compose(dp_event.SelfComposedDpEvent(gaussian, rounds))
-    return float(accountant.get_epsilon(delta))
 
 
 def _seed_dp_noise(seed: int, sigma: float) -> None:

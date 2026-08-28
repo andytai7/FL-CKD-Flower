@@ -56,13 +56,16 @@ ckd-benchmark = "benchmark:main"
 ckd-privacy = "privacy:main"
 # Membership-inference leakage audit (T2.5 / privacy layer L6). Run: uv run ckd-audit
 ckd-audit = "audit:main"
+# Practice-side FHIR preprocessor rehearsal: canonical extract_features.sql frame from one
+# practice's own FHIR server, de-identified. Run: uv run ckd-fhir-extract http://localhost:8080/fhir
+ckd-fhir-extract = "data.fhir_loader:main"
 
 # Flat layout: data/ and models/ packages plus top-level app modules at the repo root.
 [tool.hatch.build.targets.wheel]
 include = [
     "data", "models",
     "client_app.py", "server_app.py", "task.py", "centralized.py", "simulate.py",
-    "messages.py", "benchmark.py", "privacy.py", "audit.py",
+    "messages.py", "benchmark.py", "privacy.py", "audit.py", "dp.py",
 ]
 # Editable installs: put the project root on sys.path (path-based) rather than enumerating
 # modules, so every top-level .py here is importable and newly added files are picked up reliably.
@@ -95,6 +98,10 @@ seed = 42
 # Where each SuperNode reads its patients from: "csv" partitions the flat synthetic file,
 # "fhir" queries that practice's own FHIR server (fhir-base-url comes from --node-config).
 data-source = "csv"
+# Note the two sources are different tasks (CLAUDE.md §3b): "csv" = synthetic 10-feature
+# prevalence schema; "fhir" = canonical extract_features.sql contract, de-identified in
+# data/fhir_loader.py (no identifier read or emitted; optional `pseudonym-salt` in --node-config
+# adds the salted-HMAC join key named in docs/PRIVACY.md §2).
 
 # Privacy layer L5 (CLAUDE.md §9): anonymise per-practice metric lines / suppress small cohorts.
 # ON by default. Naming a practice alongside its cohort size and AUROC every round is itself a
@@ -104,11 +111,36 @@ data-source = "csv"
 metric-privacy = true
 min-cohort-size = 20
 
+# Participation floor: a practice whose local train split is smaller than `min-train-examples`
+# is excluded from FedAvg. Enforced on both sides: the ClientApp skips training and replies with
+# num-examples = 0 (a zero weight — under SecAgg+ this also zeroes the protocol's weighting
+# factor, removing the practice from the masked sum), and the ServerApp's CohortFloorFedAvg
+# strategy drops any reply below the floor before aggregating. 0 = off: every practice trains,
+# keeping the research baseline comparable.
+min-train-examples = 0
+
 # Privacy layer L4-local (CLAUDE.md §9): clip + Gaussian-noise each practice's update INSIDE the
 # SuperNode, before transmission. This is the only mechanism that changes what the AGGREGATING PARTY
 # receives — central DP noises during aggregation, so the server sees every un-noised update first.
 # 0 = off. Utility cost at this cohort size is severe; measure with `uv run ckd-privacy` first.
 local-dp-epsilon = 0.0
+
+# Privacy layer L4-central (docs/PRIVACY.md §3.1): clip + Gaussian-noise during AGGREGATION —
+# protects the released model, not the wire (the server still receives un-noised updates; that
+# channel is what secure-aggregation / local-dp address). The budget is the configured quantity:
+# `central-dp-epsilon` is the composed RDP ε over ALL num-server-rounds at `central-dp-delta`,
+# and dp.sigma_for_epsilon inverts the accountant to derive the per-run noise multiplier σ —
+# so the reported number stays fixed while the round count changes (halving rounds halves the
+# required noise). 0 = off. Measured cost at ε≈8: −0.035 AUROC. Mutually exclusive with
+# secure-aggregation on this code path (server_app raises if both are set).
+central-dp-epsilon = 0.0
+central-dp-delta = 1e-5
+
+# The deployment standard (notebooks/03): record-level DP-SGD inside each practice + the server-side
+# ε orchestrator. Set >0 to a target composed ε; the ServerApp then runs a Phase-0 census and stamps
+# each practice's (batch, σ) plan per round. Mutually exclusive with central-dp-epsilon; composes
+# with secure-aggregation=true (the pair IS the standard).
+dpsgd-epsilon = 0.0
 
 # Privacy layer L3 (CLAUDE.md §9): SecAgg+ — the server can open only the aggregate, never one
 # practice's update. OFF by default because it switches the run onto the legacy workflow (flwr 1.33

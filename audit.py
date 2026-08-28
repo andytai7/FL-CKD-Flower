@@ -49,15 +49,13 @@ from models.protocols.common import (
     to_flower_arrays,
 )
 from privacy import (
-    CLIPPING_NORM,
-    DELTA,
     LEARNING_RATE,
     LOCAL_DP_EPSILONS,
     NOISE_MULTIPLIERS,
     _prepare,
     _seed_dp_noise,
-    epsilon_rdp,
 )
+from dp import CLIPPING_NORM, DELTA, epsilon_rdp
 
 logging.getLogger("flwr").setLevel(logging.ERROR)
 logging.getLogger("absl").setLevel(logging.ERROR)
