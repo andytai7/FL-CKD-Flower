@@ -1,8 +1,8 @@
 """Flower ClientApp — one GP practice (Message API, flwr 1.33).
 
-Model-agnostic: it asks the factory for whatever architecture the run is configured with, loads its
-data partition, splits/scales locally (data never leaves the client), and runs warm-started local
-training each round.
+Each practice trains the project's single model — warm-started logistic regression — on its own
+data partition: rows are split/scaled locally (data never leaves the client) and every round
+warm-starts from the global weights.
 
 Message API contract (CLAUDE.md §6):
 - incoming  `msg.content["arrays"]`  -> global model weights
@@ -37,7 +37,7 @@ from flwr.app import ArrayRecord, Context, Message, MetricRecord, RecordDict
 from flwr.clientapp import ClientApp
 
 from data import load_partition, load_practice_frame, to_xy
-from models import make_model
+from models import LogRegModel
 from task import compute_metrics, fit_scaler
 
 # δ is conventionally set below 1/n (docs/PRIVACY.md §1 / privacy.py); the pilot cohort is ~3.5k patients.
@@ -83,7 +83,7 @@ def build_client_from_frame(df, partition_id: int, run_config) -> CKDPractice:
 
     The data-source-agnostic core: callers supply the rows (a Dirichlet partition of the flat CSV,
     one on-disk clinic file, or a FHIR query result) and this does the local split + scaling +
-    model build identically. This is the ONLY client constructor — see SKILL.md.
+    LogRegModel build identically. This is the ONLY client constructor — see SKILL.md.
     """
     seed = int(run_config["seed"])
     X, y = to_xy(df)
@@ -92,8 +92,7 @@ def build_client_from_frame(df, partition_id: int, run_config) -> CKDPractice:
     scaler = fit_scaler(X_train)
     X_train, X_test = scaler.transform(X_train), scaler.transform(X_test)
 
-    model = make_model(
-        str(run_config["model"]),
+    model = LogRegModel(
         class_weight_balanced=bool(run_config["class-weight-balanced"]),
         seed=seed,
     )

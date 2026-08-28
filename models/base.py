@@ -1,8 +1,9 @@
-"""Common interface for federated (FedAvg-compatible) models.
+"""The weight-exchange contract for the project's single model, `LogRegModel`.
 
-Both the logistic-regression and MLP baselines expose their weights as a flat ``list[np.ndarray]``
-so the Flower client/server can exchange and average them without knowing the model type. This is
-what makes the pipeline "model-agnostic": swap the model, keep the client/server untouched.
+The logistic regression exposes its weights as a flat ``list[np.ndarray]`` — ``[coef_,
+intercept_]`` — so the Flower client/server can exchange and average them without knowing the
+model internals: the client warm-starts from the global arrays, trains locally, and hands the
+updated arrays back to FedAvg.
 """
 
 from __future__ import annotations

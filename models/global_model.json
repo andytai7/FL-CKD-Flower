@@ -1,0 +1,76 @@
+{
+  "format": "ckd-fl global model artifact v1",
+  "exported": "2026-08-28",
+  "model": "logreg",
+  "label": "ckd_stage3plus",
+  "task": "P(CKD stage >= 3) \u2014 synthetic prevalence task (CLAUDE.md \u00a73a)",
+  "feature_cols": [
+    "age_years",
+    "dx_hypertonie",
+    "dx_diabetes",
+    "dx_khk",
+    "dx_adipositas",
+    "dx_herzinsuffizienz",
+    "dx_hyperurikaemie",
+    "years_since_hypertonie_dx",
+    "years_since_diabetes_dx",
+    "years_since_khk_dx"
+  ],
+  "n_features": 10,
+  "coef": [
+    1.2354224920272827,
+    0.25747692584991455,
+    0.7552127242088318,
+    0.5881998538970947,
+    0.42830219864845276,
+    0.5580146312713623,
+    -0.10835451632738113,
+    0.7660034894943237,
+    1.049134612083435,
+    0.7179560661315918
+  ],
+  "intercept": [
+    -0.20122796297073364
+  ],
+  "scaler": {
+    "mean": [
+      57.10717603778956,
+      0.4081196581196581,
+      0.24816849816849818,
+      0.15323565323565325,
+      0.25457875457875456,
+      0.12301587301587301,
+      0.2026862026862027,
+      3.912705615344935,
+      2.249300716001932,
+      1.4633518614662955
+    ],
+    "scale": [
+      16.28519084723714,
+      0.49148550617078374,
+      0.4319501067082751,
+      0.36021450250246156,
+      0.4356241640403856,
+      0.32845542772500447,
+      0.40200062926175906,
+      5.861147837535713,
+      4.776025501759903,
+      4.033305690864302
+    ]
+  },
+  "training": {
+    "strategy": "Flower FedAvg (flwr 1.33)",
+    "rounds": 10,
+    "seed": 42,
+    "data": "data/clinics/*.csv \u2014 synthetic per-clinic stand-in data"
+  },
+  "metrics": {
+    "global_auc": 0.7948538940626437,
+    "worst_practice_auc": 0.6785714285714286,
+    "global_sensitivity": 0.7084858197358198,
+    "worst_practice_sensitivity": 0.6,
+    "practices": 10,
+    "patients_evaluated": 660
+  },
+  "warning": "Trained on synthetic data for the FLIP-IT pre-kickoff sandbox. Not a medical device; not for clinical decisions."
+}

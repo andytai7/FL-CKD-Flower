@@ -237,7 +237,7 @@ Override run config without editing the file:
 
 ```bash
 flwr run . flipit-prod --stream \
-  --run-config "num-server-rounds=20 model='logreg' data-source='fhir' num-practices=25"
+  --run-config "num-server-rounds=20 data-source='fhir' num-practices=25"
 ```
 
 Managing runs:

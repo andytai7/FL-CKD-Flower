@@ -8,6 +8,12 @@
 > and continues the numbering. Nothing in the sister project's own records is deleted — its
 > charter treats negative results as findings and its archive as read-only; the pruning below
 > scopes the *FL-CKD-Flower planning view only*.
+>
+> **Scope note (2026-08-28):** the codebase was reduced to logistic regression only — the MLP and
+> XGBoost/`FedXgbBagging` model paths were evaluated and **removed**. Future lanes below that
+> touch the protocol benchmark (e.g. the C5→Era-16 FedMosaic null-twin suite) exercise the logreg
+> protocols (FedAvg / FedProx / FedMosaic) only; closed era records above are left untouched as
+> history.
 
 ## 1. Review of the inherited era list
 

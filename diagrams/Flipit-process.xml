@@ -1,0 +1,110 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net">
+  <diagram name="FLIP-IT Process" id="flipit-process">
+    <mxGraphModel dx="2092" dy="1155" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="t0" parent="1" vertex="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=14;fontColor=#000000;fontStyle=1;rounded=0;" value="FLIP-IT End-to-End Process — From Practice Onboarding to the Consultation">
+          <mxGeometry x="20" y="20" width="1120" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="t1" parent="1" vertex="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=11;fontColor=#333333;fontStyle=2;rounded=0;" value="The model travels to the data — patient records never leave the practice. One consortium, 25 GP practices, one shared CKD risk model.">
+          <mxGeometry x="20" y="56" width="1120" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="t2" parent="1" vertex="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=12;fontColor=#2f5b32;fontStyle=1;rounded=0;" value="INSIDE THE PRACTICE — patient data never leaves">
+          <mxGeometry x="40" y="100" width="500" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="t3" parent="1" vertex="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=12;fontColor=#36476b;fontStyle=1;rounded=0;" value="CENTRAL CONSORTIUM — one SuperLink (docport / IKIM KITE)">
+          <mxGeometry x="620" y="100" width="500" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="sg-L0" parent="1" vertex="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;fontStyle=2;rounded=0;" value="Stage 1 — join">
+          <mxGeometry x="510" y="126" width="140" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="sg-L1" parent="1" vertex="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;fontStyle=2;rounded=0;" value="Stage 2 — data &amp; census">
+          <mxGeometry x="510" y="318" width="140" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="sg-L2" parent="1" vertex="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;fontStyle=2;rounded=0;" value="Stage 3 — federated rounds">
+          <mxGeometry x="510" y="527" width="140" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="sg-G" parent="1" vertex="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;fontStyle=2;rounded=0;" value="Stage 4 — approval">
+          <mxGeometry x="510" y="702" width="140" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="sg-L3" parent="1" vertex="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;fontStyle=2;rounded=0;" value="Stage 5 — deploy">
+          <mxGeometry x="510" y="877" width="140" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="sg-L4" parent="1" vertex="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;fontStyle=2;rounded=0;" value="Stage 6 — consult">
+          <mxGeometry x="510" y="1052" width="140" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="L0" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=top;spacingTop=6;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;" value="&lt;b&gt;ONBOARDING — one time, with practice IT&lt;/b&gt;&lt;br&gt;• Practice generates a P-384 key pair — the private key never&lt;br&gt;  leaves the machine&lt;br&gt;• Practice IT installs one Flower SuperNode and points it at the&lt;br&gt;  practice's own FHIR server&lt;br&gt;• Cohort validated locally: ckd-fhir-extract prints exclusion&lt;br&gt;  accounting; no rows leave">
+          <mxGeometry x="40" y="150" width="500" height="152" as="geometry" />
+        </mxCell>
+        <mxCell id="R0" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=top;spacingTop=6;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="&lt;b&gt;CONSORTIUM ADMIN&lt;/b&gt;&lt;br&gt;• Runs the SuperLink on central infrastructure (TLS + key-based&lt;br&gt;  admission)&lt;br&gt;• Registers each practice's public key (flwr supernode register)&lt;br&gt;• Only registered practices can ever join a run — anyone can be&lt;br&gt;  withdrawn">
+          <mxGeometry x="620" y="150" width="500" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="L1" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=top;spacingTop=6;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;" value="&lt;b&gt;DATA PIPELINE — runs inside the practice&lt;/b&gt;&lt;br&gt;• Tomedo practice software → nightly export → the practice's&lt;br&gt;  PostgreSQL / FHIR server&lt;br&gt;• extract_features.sql builds the canonical 16-column feature&lt;br&gt;  contract&lt;br&gt;• Pseudonymised extract: no names, no identifiers, no patientid&lt;br&gt;  column">
+          <mxGeometry x="40" y="342" width="500" height="152" as="geometry" />
+        </mxCell>
+        <mxCell id="R1" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=top;spacingTop=6;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="&lt;b&gt;ROUND ZERO — rule-based server agent&lt;/b&gt;&lt;br&gt;• Census: each practice reports only its patient count N — never&lt;br&gt;  patient data&lt;br&gt;• Enforces the agreed privacy policy: one global target (ε, δ)&lt;br&gt;  for everyone&lt;br&gt;• Inverts the privacy accountant per clinic → its own (batch&lt;br&gt;  size, noise σ) plan&lt;br&gt;• Plan dispatched to each SuperNode inside the ConfigRecord">
+          <mxGeometry x="620" y="342" width="500" height="169" as="geometry" />
+        </mxCell>
+        <mxCell id="L2" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=top;spacingTop=6;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;" value="&lt;b&gt;FEDERATED TRAINING — repeats ≈ 10 rounds&lt;/b&gt;&lt;br&gt;• SuperNode receives the current global model&lt;br&gt;• Trains locally on its own cohort (DP-SGD with its own (batch,&lt;br&gt;  σ) plan)&lt;br&gt;• Returns a SecAgg+-masked model update — never raw weights">
+          <mxGeometry x="40" y="551" width="500" height="118" as="geometry" />
+        </mxCell>
+        <mxCell id="R2" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=top;spacingTop=6;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="&lt;b&gt;SUPERLINK AGGREGATION — per round&lt;/b&gt;&lt;br&gt;• SecAgg+ unmasking opens only the weighted SUM — individual&lt;br&gt;  updates stay hidden&lt;br&gt;• FedAvg over the sum → the new global model for the next round&lt;br&gt;• Every round logs global AND worst-practice AUROC / sensitivity&lt;br&gt;  — a weak practice cannot hide">
+          <mxGeometry x="620" y="551" width="500" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="G" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=top;spacingTop=6;fontSize=11;fillColor=#fff2cc;strokeColor=#d6b656;" value="&lt;b&gt;GOVERNANCE GATE — nothing ships until this passes&lt;/b&gt;&lt;br&gt;• Global and worst-practice AUROC / sensitivity clear the agreed&lt;br&gt;  floor&lt;br&gt;• Membership-inference leakage audit re-run on the final model&lt;br&gt;• Consortium clinical review (docport / IKIM / RUB) + legal&lt;br&gt;  review (Jorzig &amp; Partner) → release decision">
+          <mxGeometry x="180" y="726" width="800" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="L3" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=top;spacingTop=6;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;" value="&lt;b&gt;MODEL BACK IN THE PRACTICE&lt;/b&gt;&lt;br&gt;• Approved model exported as a JSON artifact, paired with the&lt;br&gt;  practice-local scaler&lt;br&gt;• Delivered onto the practice machine — scoring runs fully on-&lt;br&gt;  site&lt;br&gt;• No server connection needed at consultation time">
+          <mxGeometry x="40" y="901" width="500" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="R4" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=top;spacingTop=6;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="&lt;b&gt;CONSORTIUM OVERSIGHT — continuous&lt;/b&gt;&lt;br&gt;• Every run logged at the SuperLink: rounds, ε spend, dual-level&lt;br&gt;  metrics&lt;br&gt;• A practice can pause or leave at any time — its key is&lt;br&gt;  unregistered and no data was ever held centrally&lt;br&gt;• Later rounds refresh the model as cohorts evolve">
+          <mxGeometry x="620" y="901" width="500" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="L4" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=top;spacingTop=6;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;" value="&lt;b&gt;AT THE POINT OF CARE&lt;/b&gt;&lt;br&gt;• Clinician opens the local form, enters routine features — no&lt;br&gt;  identifiers collected or stored&lt;br&gt;• Gets P(CKD stage ≥ 3) with the practice's calibrated flag&lt;br&gt;• High-risk patients offered early diagnostics and guideline&lt;br&gt;  follow-up&lt;br&gt;• The score informs the consultation — the doctor decides">
+          <mxGeometry x="40" y="1076" width="500" height="152" as="geometry" />
+        </mxCell>
+        <mxCell id="S" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=top;spacingTop=6;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;" value="&lt;b&gt;WHAT THE CLINICIAN ACTUALLY DOES&lt;/b&gt;&lt;br&gt;• One-time: agree to join, hand IT the install sheet. During&lt;br&gt;  training: nothing — no data entry, no uploads, no change to&lt;br&gt;  daily work.&lt;br&gt;• After go-live: the CKD risk score shows up as routine decision&lt;br&gt;  support in the consultation.">
+          <mxGeometry x="40" y="1268" width="1080" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="X" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=top;spacingTop=6;fontSize=11;fillColor=#f5f5f5;strokeColor=#666666;" value="&lt;b&gt;LEGEND&lt;/b&gt;&lt;br&gt;• Solid arrow: model weights / model updates  ·  Dashed arrow:&lt;br&gt;  planning metadata (keys, census N, config) — never patient&lt;br&gt;  data&lt;br&gt;• Green: inside the practice trust boundary  ·  Blue: central&lt;br&gt;  consortium  ·  Yellow: review / decision gate">
+          <mxGeometry x="40" y="1433" width="1080" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="e0" parent="1" edge="1" source="L0" target="R0" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;strokeColor=#007FFF;" value="public key only (P-384)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" parent="1" edge="1" source="L0" target="L1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;dashed=1;strokeColor=#007FFF;" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" parent="1" edge="1" source="R0" target="R1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;dashed=1;strokeColor=#007FFF;" value="practice admitted">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" parent="1" edge="1" source="L1" target="R1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;strokeColor=#007FFF;" value="census: headcount N only">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" parent="1" edge="1" source="R1" target="L2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.9;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;dashed=1;strokeColor=#007FFF;" value="per-clinic (batch, σ) plan in ConfigRecord">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" parent="1" edge="1" source="L2" target="R2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;strokeColor=#000000;" value="SecAgg+ masked update">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" parent="1" edge="1" source="R2" target="L2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=1;entryY=0.7;entryDx=0;entryDy=0;strokeColor=#000000;" value="new global weights">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" parent="1" edge="1" source="R2" target="G" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.6;entryY=0;entryDx=0;entryDy=0;strokeColor=#000000;" value="candidate final model">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" parent="1" edge="1" source="G" target="L3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.6;entryY=0;entryDx=0;entryDy=0;strokeColor=#000000;" value="approved model artifact">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" parent="1" edge="1" source="L3" target="L4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#000000;" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" parent="1" edge="1" source="G" target="R4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;labelBackgroundColor=#FFFFFF;exitX=0.8;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;dashed=1;strokeColor=#007FFF;" value="run record logged">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

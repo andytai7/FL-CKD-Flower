@@ -275,10 +275,11 @@ Two implementation notes worth keeping:
 3. **The aggregate is still model parameters.** SecAgg+ answers *who may see one practice's update*.
    It does not by itself make the released model anonymous — that is what L4 and L6 are for.
 
-**SecAgg+ cannot protect the XGBoost path at all.** `FedXgbBagging` transmits serialized decision
-trees whose split thresholds are derived from patient values; there is no vector to mask. Any
-SecAgg-protected deployment is a logistic-regression (or MLP) deployment. The benchmark's finding
-that trees federate poorly here ([REPORT.md](REPORT.md)) makes that an easy trade.
+*Historical aside (2026-08-28):* SecAgg+ could also never protect the tree-based
+`FedXgbBagging` path — serialized split thresholds are derived from patient values, with no vector
+to mask — and the benchmark finding that trees federate poorly here ([REPORT.md](REPORT.md))
+settled the trade. **The XGBoost and MLP paths have been deleted from the codebase**; every
+SecAgg-protected deployment of this repo is now, by construction, a logistic-regression deployment.
 
 ---
 
@@ -328,8 +329,11 @@ an attack performing *worse* than chance, as a failure.)
 | Protocol | Payload | Disclosure surface | Bits/client/round |
 |---|---|---|---:|
 | `fedprox` / `fedavg` | model coefficients | A parameter vector fit to this practice's patients — the object gradient-inversion attacks target | 352 |
-| `fedxgb` | serialized decision trees | **Split thresholds are literal patient feature values.** The highest-disclosure payload here | ~20,900 |
 | `fedmosaic` | binary predictions + expertise on a *public* cohort | Opinions about patients who are already public. No parameter vector exists for the server to invert | 3,600 |
+
+*(Only these two protocol families exist — both train logistic regression. The `fedxgb` arm once on
+this list (~20,900 bits of serialized decision trees, the highest-disclosure payload here) was
+removed on 2026-08-28; kept here as historical context only.)*
 
 FedMosaic's disclosure profile is qualitatively different, and it is why the paper motivates the
 approach on privacy grounds. It also carries its own per-round DP construction (XOR mechanism on the

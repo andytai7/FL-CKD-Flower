@@ -1,7 +1,7 @@
 """Run the full protocol benchmark and write machine-readable results.
 
-Three protocols under test — **FedProx**, **FedXgbBagging**, **FedMosaic** — plus the two reference
-baselines (`local`, `fedavg`) needed to interpret them, on both datasets:
+Protocols under test — **FedProx**, **FedMosaic** — plus the two reference
+baselines (`local`, `fedavg`) needed to interpret them, on both datasets (all logistic regression):
 
 - `clinics` — the signal-bearing non-IID practices from `ckd-clinics`. This is the real comparison.
 - `flat`    — `synthetic_ckd_data.csv`, which has no learnable signal. This is the **negative
@@ -35,7 +35,7 @@ from data.loader import FEATURE_COLS
 from models.protocols import BASELINES, PROTOCOLS
 from simulate import run_simulation
 
-# Flower's strategies log an INFO line per aggregate call; at 5 comparators x 2 datasets x 20
+# Flower's strategies log an INFO line per aggregate call; at 4 comparators x 2 datasets x 20
 # rounds that is pure noise around the results table.
 logging.getLogger("flwr").setLevel(logging.ERROR)
 
@@ -89,12 +89,9 @@ def _summarize(history: list[dict]) -> dict:
 
 
 def _ceilings(dataset: str, seed: int) -> dict:
-    """Pooled-data ceilings on the SAME dataset — the only valid 'price of privacy' reference."""
-    out = {}
-    for model in ("logreg", "xgboost"):
-        with contextlib.redirect_stdout(io.StringIO()):
-            out[model] = run_centralized(model, seed=seed, clinics=(dataset == "clinics"))
-    return out
+    """Pooled-data ceiling on the SAME dataset — the only valid 'price of privacy' reference."""
+    with contextlib.redirect_stdout(io.StringIO()):
+        return {"logreg": run_centralized(seed=seed, clinics=(dataset == "clinics"))}
 
 
 def _cohort_shape(dataset: str, practices: int, seed: int) -> dict:

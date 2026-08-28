@@ -122,6 +122,18 @@ questions that no amount of engineering here can close.
 \end{answerbox}
 \end{titlepage}
 
+%% Scope remark (2026-08-28): the test-bed codebase was reduced to logistic regression only after
+%% the pinned run of \RunDate{}; the MLP and XGBoost/FedXgbBagging paths were evaluated and deleted.
+%% Table rows, figure series and prose naming the removed protocols are historical measurements,
+%% pending regeneration via make_paper.py --recompute over the logreg-only code. This file is
+%% hand-authored (make_paper.py generates figures/, tables/ and generated/ only), so the note
+%% lives here rather than in the pipeline.
+\noindent\textbf{Scope note (2026-08-28).} The \texttt{FL-CKD-Flower} codebase was reduced to
+logistic regression only after the pinned run of \RunDate{} behind this report: the MLP and the
+tree-based federated protocol were evaluated and then deleted from the code. Table rows, figure
+series and passages naming those removed protocols are historical measurements, pending
+regeneration over the logistic-regression-only repository.
+
 \tableofcontents
 \newpage
 

@@ -1,8 +1,15 @@
 # Federated CKD risk modelling — accuracy and privacy
 
-Pre-kickoff baseline results for **FLIP-IT**. Three federation protocols, one logistic-regression
+Pre-kickoff baseline results for **FLIP-IT**. Federation protocols over one logistic-regression
 model class, measured on synthetic GP-practice data, with the cost of each privacy layer measured
 rather than asserted.
+
+> **Scope note (2026-08-28).** The MLP and XGBoost/`FedXgbBagging` model paths were evaluated in
+> this report's runs and have since been **removed from scope and deleted from the codebase**; the
+> repository now trains logistic regression only (FedAvg / FedProx / FedMosaic). Tables below keep
+> the logreg protocol numbers **exactly as measured**; rows and prose referring to the removed
+> models are retained **only as clearly-marked historical context** — the model classes no longer
+> exist in the code.
 
 **Reproduce everything:**
 
@@ -25,19 +32,21 @@ that notebook is the reproducible source for every number below.
 |---|---|
 | **Cohort** | 10 synthetic GP practices, 3,276 patients, panel sizes 161–532, CKD prevalence 8.3 %–46 % |
 | **Non-IID on** | covariate shift (5 clinical archetypes), label shift (prevalence), quantity shift (panel size) |
-| **Model** | logistic regression, 10 features + intercept (`fedxgb` uses XGBoost — a different model class) |
+| **Model** | logistic regression, 10 features + intercept (a removed `fedxgb` arm used XGBoost — a different model class; historical, see scope note) |
 | **Held fixed** | seeds, local 80/20 splits, local `StandardScaler`, local optimiser. Only the protocol varies |
 | **Seeds** | 5 (42–46) — every figure is a mean ± s.d. across them |
 | **Rounds** | 20 for the headline table; runs extended to 50 to test convergence |
 | **Negative control** | `synthetic_ckd_data.csv`, max \|feature-label correlation\| 0.031 |
 
-### The three protocols
+### The two live protocols
 
 | Protocol | Strategy | Wire payload |
 |---|---|---|
 | **FedProx** | `flwr.serverapp.strategy.FedProx` (built-in), μ = 0.1 | model coefficients |
-| **FedXgbBagging** | `flwr.serverapp.strategy.FedXgbBagging` (built-in) | serialized decision trees |
 | **FedMosaic** | `models/protocols/fedmosaic.py`, a `Strategy` subclass implementing Algorithm 1 of `docs/2507.00259v3.pdf` | binary predictions + expertise on a public cohort |
+
+(The benchmark once included a third protocol, `FedXgbBagging` over XGBoost on serialized decision
+trees — removed from the codebase on 2026-08-28; its measurements below are historical.)
 
 Two **reference baselines** make the protocols interpretable: `local` (no collaboration at all) and
 `fedavg` (plain averaging — isolates what FedProx's proximal term actually bought).
@@ -54,7 +63,6 @@ on every practice's data together, which reality does not permit — is **0.861*
 | *centralized ceiling* | *0.861* | *n/a* | *0.808* | *n/a* |
 | **FedProx** | **0.808 ± 0.008** | **0.675 ± 0.054** | 0.703 | 352 |
 | **FedMosaic** | 0.800 ± 0.010 | 0.661 ± 0.068 | 0.709 | 3,600 |
-| **FedXgbBagging** | 0.729 ± 0.019 | 0.555 ± 0.045 | 0.599 | 21,521 |
 | *fedavg* (baseline) | *0.808 ± 0.008* | *0.675 ± 0.054* | *0.702* | *352* |
 | *local* (baseline) | *0.789 ± 0.008* | *0.495 ± 0.126* | *0.699* | *0* |
 
@@ -82,16 +90,18 @@ score: it never transmits a model. A single-seed run (seed 42) showed FedMosaic 
 seeds that reverses, and worst-practice variance is wide enough (± 0.06–0.14) that single-seed
 protocol rankings should not be trusted.
 
-**5. XGBoost federates badly, and the failure is federation-specific.** Its pooled ceiling is 0.860 —
-indistinguishable from logistic regression's 0.861 — but bagging reaches only 0.729, at 61× the
-bandwidth.
+**5. *(Historical — removed model, 2026-08-28.)* XGBoost federated badly, and the failure was
+federation-specific.** Its pooled ceiling was 0.860 — indistinguishable from logistic regression's
+0.861 — but bagging reached only 0.729, at 61× the bandwidth. This finding, not any defect in the
+trees themselves, is why the model class was deleted; the five findings above are what the live
+logreg protocols show.
 
-### More rounds do not help — and hurt the tree path
+### More rounds do not help — and hurt the (removed) tree path
 
 Read from the same runs, extended to 50 rounds:
 
-| rounds | fedavg | fedprox | fedmosaic | local | fedxgb |
-|---:|---|---|---|---|---|
+| rounds | fedavg | fedprox | fedmosaic | local | fedxgb *(removed 2026-08-28; historical)* |
+|---|---|---|---|---|---|
 | 5 | 0.805 | 0.805 | 0.800 | 0.791 | **0.780** |
 | 10 | 0.807 | 0.807 | 0.800 | 0.790 | 0.757 |
 | 20 | 0.808 | 0.808 | 0.800 | 0.789 | 0.729 |
@@ -99,9 +109,10 @@ Read from the same runs, extended to 50 rounds:
 | 50 | 0.808 | 0.808 | 0.799 | 0.785 | **0.686** |
 
 The logistic protocols are converged by round ~10 and flat thereafter. `local` drifts *down* as each
-practice overfits its own panel. **`fedxgb` peaks at round 5 and degrades monotonically** —
-FedXgbBagging appends every practice's new trees to one ensemble each round, and under non-IID data
-those trees encode contradictory local rules, so more rounds means more contradiction.
+practice overfits its own panel. The historical **`fedxgb` column** (model removed 2026-08-28)
+peaked at round 5 and degraded monotonically — FedXgbBagging appended every practice's new trees to
+one ensemble each round, and under non-IID data those trees encoded contradictory local rules, so
+more rounds meant more contradiction.
 
 This has a direct privacy consequence: **cutting the round count from 50 to 10 costs no accuracy and
 cuts the composed DP budget about 2.7×** (the repo's own RDP accountant at σ = 2.0: ε 22.0 → 8.1 —
@@ -121,12 +132,12 @@ clinics numbers as real.
 | Protocol | Payload | Disclosure surface |
 |---|---|---|
 | FedProx / FedAvg | model coefficients | A parameter vector fitted to this practice's patients — the object gradient-inversion attacks target |
-| FedXgbBagging | serialized trees | **Split thresholds are literal patient feature values.** The highest-disclosure payload of the three |
 | FedMosaic | predictions + expertise on a *public* cohort | Opinions about patients who are already public. No parameter vector exists for the server to invert |
+| *FedXgbBagging (removed 2026-08-28; historical)* | *serialized trees* | *Split thresholds were literal patient feature values — the highest-disclosure payload of the arm then under test* |
 
 FedMosaic's advantage is qualitative, not incremental: there is no model to steal. It costs ~10×
-FedProx's bandwidth (3,600 vs 352 bits per practice per round) — but still **6× less** than
-FedXgbBagging, which has the worst privacy profile *and* the worst accuracy.
+FedProx's bandwidth (3,600 vs 352 bits per practice per round) — and historically **6× less** than
+the removed FedXgbBagging arm, which had the worst privacy profile *and* the worst accuracy.
 
 ### Cost of Differential Privacy
 
@@ -188,9 +199,10 @@ the three limits that must travel with any claim about it — semi-honest threat
 participation, and an aggregate that is still model parameters — in
 [PRIVACY.md §4](PRIVACY.md).
 
-**SecAgg+ cannot protect FedXgbBagging at all** — trees are not a vector to mask. Any
-SecAgg-protected deployment is a logistic-regression deployment, which the accuracy results make an
-easy trade.
+*(Historical, 2026-08-28: SecAgg+ could not protect FedXgbBagging at all — trees are not a vector
+to mask — which was one driver of removing the tree path.)* Every SecAgg-protected deployment of
+this codebase is now, by construction, a logistic-regression deployment, which the accuracy results
+make an easy trade.
 
 ### Leakage audit
 
@@ -217,10 +229,12 @@ This is one of the three attack families EDPB Opinion 28/2024 names, on syntheti
 
 ## 4. Recommendation
 
-**Deploy logistic regression, not XGBoost.** Equal pooled ceiling (0.861 against 0.860), far better
-federated accuracy (0.808 against 0.729), 61× less bandwidth, it degrades rather than improves with
-more rounds, and it is the only one of the two secure aggregation can protect. It is also the model
-named in grant task T2.2.
+**Deploy logistic regression — it is now the only model in the codebase.** The historical comparison
+settled it: equal pooled ceiling (0.861 against XGBoost's 0.860), far better federated accuracy
+(0.808 against 0.729), 61× less bandwidth, degradation (not improvement) with more rounds on the
+tree arm, and only the linear model can be protected by secure aggregation — so on 2026-08-28 both
+the MLP and XGBoost paths were removed rather than merely disrecommended. Logistic regression is
+also the model named in grant task T2.2.
 
 **Use FedProx or FedAvg as the default.** They are indistinguishable from each other and are the
 most accurate option on both global and worst-practice AUROC, at the smallest payload. Keep FedProx

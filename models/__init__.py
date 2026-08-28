@@ -1,30 +1,12 @@
-"""Model zoo: FedAvg-compatible logistic regression and MLP.
+"""The model zoo is a single model: FedAvg-compatible warm-started logistic regression.
 
-Federated XGBoost is not built here — it has no weight vector to average, so it lives in
-`models/fedxgb.py` and federates through Flower's `FedXgbBagging` strategy instead.
+`LogRegModel` wraps sklearn's `SGDClassifier(loss="log_loss")` so `partial_fit` can warm-start
+across federation rounds (the global weights become the starting point for the next local
+update). Logistic regression is the only model this project trains — it is the first deployment
+step, and the FedAvg / FedProx / FedMosaic protocols are aggregation strategies over it.
 """
 
 from .base import FederatedModel
 from .logreg import LogRegModel
-from .mlp import MLPModel
 
-# Federated (FedAvg-compatible) architectures, selectable via the `model` run-config key.
-FEDERATED_MODELS = {
-    "logreg": LogRegModel,
-    "mlp": MLPModel,
-}
-
-
-def make_model(name: str, **kwargs) -> FederatedModel:
-    """Factory: build a federated model by name (`logreg` | `mlp`)."""
-    try:
-        return FEDERATED_MODELS[name](**kwargs)
-    except KeyError as exc:
-        raise ValueError(
-            f"Unknown federated model {name!r}; choose from {sorted(FEDERATED_MODELS)}. "
-            "('xgboost' has no weight vector to average — it federates via FedXgbBagging; "
-            "see models/fedxgb.py.)"
-        ) from exc
-
-
-__all__ = ["FederatedModel", "LogRegModel", "MLPModel", "make_model", "FEDERATED_MODELS"]
+__all__ = ["FederatedModel", "LogRegModel"]

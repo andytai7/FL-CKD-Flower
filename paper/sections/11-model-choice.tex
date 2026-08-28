@@ -26,29 +26,35 @@ That is a qualitative difference, and if the legal analysis ends up treating par
 personal data while treating predictions on public patients differently, FedMosaic becomes worth
 revisiting on those grounds not on these.
 
-\paragraph{Do not deploy the tree-based protocol.} Its pooled ceiling matches logistic regression
-(\CeilingXGB{} against \CeilingAUC{}), so the model class is not the problem but federated it
-reaches only \XGBAUC{} with a worst practice of \XGBWorst{}, it \emph{degrades} with additional
-rounds (\S\ref{sec:reduce}), it costs \UplinkXGB{} bits per round against \UplinkLogreg{}, its split
-thresholds are literal patient values, and secure aggregation cannot protect it at all
-(\S\ref{sec:secagg}).
+\paragraph{The tree-based alternative was evaluated and is no longer in scope.} A
+gradient-boosted-trees arm (FedXgbBagging) was benchmarked against the logistic protocols on the
+pinned run this report is built from: its pooled ceiling matched logistic regression, so the model
+class was not the problem, but federated it reached far less, it \emph{degraded} with additional
+rounds (\S\ref{sec:reduce}), its split thresholds were literal patient values
+(\S\ref{sec:payload}), and secure aggregation could not protect it at all (\S\ref{sec:secagg}).
+The measured comparison is retained, marked historical, in the accompanying benchmark report
+(the test bed's \texttt{docs/REPORT.md}, scope note 2026-08-28). On 2026-08-28 the tree-based and MLP
+code paths were \textbf{deleted from the test bed}; logistic regression --- the model named in
+grant task T2.2 --- is now the only model class in the codebase, so the recommendation is not a
+preference among alternatives but a description of what exists.
 
 \subsection{Why the convergence matters to counsel}
 
 It is common for privacy measures to be resisted on the grounds that they cost accuracy, which turns
 every safeguard into a negotiation. That is not the situation here. The evidence points one way on
-every axis at once:
+every axis at once (numbers as measured on the pinned run; the ``against'' column is the
+now-removed trees arm, retained as historical context):
 
 \begin{center}
 \small
 \begin{tabular}{lll}
   \toprule
-  Criterion & Favours & Against \\
+  Criterion & Favours & Against (historical) \\
   \midrule
-  Global accuracy & logistic regression & trees, by \XGBGlobalGap{} AUROC \\
-  Worst-practice accuracy & logistic regression & trees, by \XGBWorstGap{} AUROC \\
+  Global accuracy & logistic regression & trees (removed 2026-08-28) \\
+  Worst-practice accuracy & logistic regression & trees (removed 2026-08-28) \\
   Behaviour with more rounds & logistic regression (flat) & trees (degrade) \\
-  Bandwidth & logistic regression & trees, by $\sim$\XGBBandwidthRatio$\times$ \\
+  Bandwidth & logistic regression & trees ($\sim$60$\times$ the uplink) \\
   Disclosure surface & logistic regression & trees (literal patient values) \\
   Protectable by secure aggregation & logistic regression & trees (impossible) \\
   \bottomrule

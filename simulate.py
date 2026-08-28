@@ -8,20 +8,18 @@ callers can plot learning curves and compare protocols, without Ray process star
 Everything that matters is still genuine `flwr` code — this is not a reimplementation of
 federation:
 
-- `logreg` / `mlp` are aggregated by the real `flwr.serverapp.strategy.FedAvg`, by calling its
-  `aggregate_train` / `aggregate_evaluate` on real `Message` objects each round;
-- `xgboost` is federated by the real `FedXgbBagging` — each practice grows a few local trees and
-  the strategy bags them into one global ensemble (see `models/fedxgb.py`);
+- the logistic regression is aggregated by the real `flwr.serverapp.strategy.FedAvg`, by calling
+  its `aggregate_train` / `aggregate_evaluate` on real `Message` objects each round;
 - metric aggregation is the real `server_app.weighted_and_worst`, wired as the strategy's
   `evaluate_metrics_aggr_fn`, exactly as the ServerApp does it;
 - the protocol benchmark uses Flower's built-in `FedAvg` and `FedProx` plus `FedMosaic`, a
   `Strategy` subclass in `models/protocols/` — Flower's own extension point (CLAUDE.md §0 rule 8).
 
+This runner is logreg-only: logistic regression is the only model the project trains.
+
     uv run ckd-simulate                       # 12 practices, 20 rounds, logreg (FedAvg), non-IID
-    uv run ckd-simulate --model mlp --rounds 10
-    uv run ckd-simulate --model xgboost       # federated trees via FedXgbBagging
     uv run ckd-simulate --clinics             # one practice per on-disk data/clinics/ CSV
-    uv run ckd-simulate --protocol fedprox --clinics     # protocol benchmark (logreg only)
+    uv run ckd-simulate --protocol fedprox --clinics     # protocol benchmark
     uv run ckd-simulate --protocol fedmosaic --clinics
 """
 
@@ -31,23 +29,19 @@ import argparse
 import contextlib
 import io
 import math
-import time
 
 import numpy as np
-from flwr.serverapp.strategy import FedAvg, FedXgbBagging
+from flwr.serverapp.strategy import FedAvg
 
-from client_app import _local_split, build_client_from_frame
-from data import NUM_FEATURES, load_clinic_frames, load_partition, to_xy
+from client_app import build_client_from_frame
+from data import NUM_FEATURES, load_clinic_frames, load_partition
 from messages import evaluate_reply, hushed, train_reply
-from models import make_model
-from models.fedxgb import XgbPractice
+from models import LogRegModel
 from models.protocols import BASELINES, PROTOCOLS
 from server_app import configure_metric_privacy, weighted_and_worst
-from task import compute_metrics
 
 # Mirrors [tool.flwr.app.config]; overridable via CLI below.
 DEFAULT_CONFIG = {
-    "model": "logreg",
     "local-epochs": 2,
     "alpha": 0.5,
     "iid": False,
@@ -83,26 +77,11 @@ def fedavg(updates: list[tuple[list[np.ndarray], int]]) -> list[np.ndarray]:
     return arrays.to_numpy_ndarrays()
 
 
-def fedxgb_bag(updates: list[tuple[bytes, int]], global_model: bytes | None = None) -> bytes:
-    """One round of Flower's real ``FedXgbBagging`` over ``[(local_trees, n), ...]``.
-
-    The tree counterpart of :func:`fedavg`, for the notebooks: hands back the grown global
-    ensemble without the caller having to build Flower message types.
-    """
-    strategy = FedXgbBagging()
-    strategy.current_bst = global_model if global_model is not None else b""
-    replies = [train_reply([np.frombuffer(trees, dtype=np.uint8)], n) for trees, n in updates]
-    with contextlib.redirect_stdout(io.StringIO()):
-        arrays, _ = strategy.aggregate_train(1, replies)
-    return arrays.to_numpy_ndarrays()[0].tobytes()
-
-
-# ── FedAvg (logreg / mlp) ───────────────────────────────────────────────────
+# ── FedAvg (logreg) ─────────────────────────────────────────────────────────
 
 
 def _run_fedavg(frames: list, num_rounds: int, quiet: bool, config: dict) -> list[dict]:
-    global_model = make_model(
-        str(config["model"]),
+    global_model = LogRegModel(
         class_weight_balanced=bool(config["class-weight-balanced"]),
         seed=int(config["seed"]),
     )
@@ -129,61 +108,6 @@ def _run_fedavg(frames: list, num_rounds: int, quiet: bool, config: dict) -> lis
             metrics, n = client.evaluate(ndarrays)
             eval_replies.append(evaluate_reply(metrics, n, client.partition_id))
         history.append(_aggregate_and_print(strategy, rnd, eval_replies, quiet))
-    return history
-
-
-# ── FedXgbBagging (xgboost) ─────────────────────────────────────────────────
-
-
-def _run_fedxgb(frames: list, num_rounds: int, quiet: bool, config: dict) -> list[dict]:
-    seed = int(config["seed"])
-    practices = []
-    for pid, df in enumerate(frames):
-        X, y = to_xy(df)
-        X_train, y_train, X_test, y_test = _local_split(X, y, seed, pid)
-        practices.append(
-            XgbPractice(
-                X_train, y_train, X_test, y_test,
-                num_local_round=int(config["local-epochs"]),
-                class_weight_balanced=bool(config["class-weight-balanced"]),
-                seed=seed,
-            )
-        )
-    strategy = FedXgbBagging(evaluate_metrics_aggr_fn=weighted_and_worst)
-    global_model: bytes | None = None
-
-    history = []
-    for rnd in range(1, num_rounds + 1):
-        started = time.perf_counter()
-        # train: each practice grows local trees; FedXgbBagging bags them into the global ensemble.
-        local_trees = [pr.local_trees(global_model) for pr in practices]
-        # What a practice actually uploads: its serialized new trees. Unlike a weight vector this
-        # grows with ensemble depth, so it is measured per round rather than assumed constant.
-        uplink_bits = 8.0 * float(np.mean([len(t) for t in local_trees]))
-        replies = [
-            train_reply(
-                [np.frombuffer(trees, dtype=np.uint8)],
-                pr.num_examples,
-            )
-            for pr, trees in zip(practices, local_trees)
-        ]
-        # FedXgbBagging tracks the ensemble it last broadcast in `current_bst`, which it normally
-        # sets inside configure_train (the Grid path we bypass here). Seed it with the same value
-        # configure_train would have — b"" on round 1, so the first practice's trees seed the bag.
-        strategy.current_bst = global_model if global_model is not None else b""
-        with hushed():
-            arrays, _ = strategy.aggregate_train(rnd, replies)
-        global_model = arrays.to_numpy_ndarrays()[0].tobytes()
-
-        # evaluate: each practice scores the global ensemble on its local validation set.
-        eval_replies = []
-        for pid, pr in enumerate(practices):
-            metrics = compute_metrics(pr.y_val, pr.predict_proba(global_model))
-            eval_replies.append(evaluate_reply(metrics, len(pr.y_val), pid))
-        row = _aggregate_and_print(strategy, rnd, eval_replies, quiet)
-        row["uplink-bits-per-client"] = uplink_bits
-        row["round-seconds"] = time.perf_counter() - started
-        history.append(row)
     return history
 
 
@@ -242,21 +166,12 @@ def run_simulation(
 ) -> list[dict]:
     """Run one federation.
 
-    `protocol=None` runs the production model path — sklearn `logreg`/`mlp` under `FedAvg`, or
-    `xgboost` under `FedXgbBagging`. Passing a `protocol` runs the logistic-regression protocol
-    benchmark instead, where every comparator shares one local learner so only the protocol varies.
+    `protocol=None` runs the production path — the sklearn logistic regression under `FedAvg`.
+    Passing a `protocol` runs the logistic-regression protocol benchmark instead, where every
+    comparator shares one local learner so only the protocol varies.
     """
     config = {**DEFAULT_CONFIG, **overrides}
-    model = str(config["model"])
     frames, source = _load_frames(num_practices, config, clinics_dir)
-
-    if protocol == "fedxgb":
-        # The tree protocol: a different model class, so it runs the FedXgbBagging path directly.
-        print(
-            f"Flower protocol=fedxgb (FedXgbBagging) | model=xgboost source={source} "
-            f"rounds={num_rounds}\n" + "-" * 64
-        )
-        return _run_fedxgb(frames, num_rounds, quiet, {**config, "model": "xgboost"})
 
     if protocol is not None:
         from models.protocols import run_protocol
@@ -267,22 +182,19 @@ def run_simulation(
         )
         return run_protocol(protocol, frames, num_rounds, quiet, config, _aggregate_and_print)
 
-    strategy_name = "FedXgbBagging" if model == "xgboost" else "FedAvg"
     print(
-        f"Flower {strategy_name} (in-process) | model={model} source={source} "
+        f"Flower FedAvg (in-process) | model=logreg source={source} "
         f"rounds={num_rounds}\n" + "-" * 64
     )
-    runner = _run_fedxgb if model == "xgboost" else _run_fedavg
     # Full per-round history (one aggregated-metrics dict per round) so callers/notebooks can plot
     # learning curves; `main()` ignores the return value.
-    return runner(frames, num_rounds, quiet, config)
+    return _run_fedavg(frames, num_rounds, quiet, config)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Flower federated CKD simulation (in-process)")
     parser.add_argument("--practices", type=int, default=12)
     parser.add_argument("--rounds", type=int, default=20)
-    parser.add_argument("--model", default="logreg", choices=["logreg", "mlp", "xgboost"])
     parser.add_argument(
         "--protocol", default=None, choices=list(PROTOCOL_CHOICES),
         help=f"run the protocol benchmark instead of the production model path. Protocols: "
@@ -326,7 +238,6 @@ def main() -> None:
         quiet=args.quiet,
         clinics_dir=clinics_dir,
         protocol=args.protocol,
-        model=args.model,
         alpha=args.alpha,
         iid=args.iid,
         seed=args.seed,

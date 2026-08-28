@@ -51,31 +51,28 @@ ROUNDS = 50
 CHECKPOINTS = (5, 10, 20, 35, 50)
 HEADLINE_ROUND = 20
 DP_ROUNDS = 20
-PROTOCOLS = ("fedprox", "fedxgb", "fedmosaic")
+PROTOCOLS = ("fedprox", "fedmosaic")
 BASELINES = ("local", "fedavg")
 ALL_RUNS = PROTOCOLS + BASELINES
 
 # ── design tokens ────────────────────────────────────────────────────────────────────────────
-# Categorical slots 1-3 of the reference palette, one per protocol; the two reference baselines
-# are neutral rather than a fourth and fifth hue, because "protocol vs baseline" is the real
-# distinction and cycling hues would imply five peers. Validated for this three-hue subset:
-# worst normal-vision dE 24.0 (floor 15), worst CVD dE 10.0 across protan/deutan/tritan (target 8).
-# `fedxgb` sits at 2.82:1 on white, below the 3:1 contrast gate, so the relief rule applies and
-# every figure carries direct value labels with a companion table in the report.
+# Categorical slots 1-2 of the reference palette, one per protocol; the two reference baselines
+# are neutral rather than a third and fourth hue, because "protocol vs baseline" is the real
+# distinction and cycling hues would imply four peers. (The tree-based protocol that used
+# palette slot 3 was evaluated and removed from the codebase on 2026-08-28.)
 COLOR = {
     "fedmosaic": "#2a78d6",  # slot 1 blue
     "fedprox": "#eb6834",    # slot 2 orange
-    "fedxgb": "#1baf7a",     # slot 3 aqua
     "fedavg": "#8695a1",     # baseline, neutral
     "local": "#b8c2ca",      # baseline, neutral
 }
 # Secondary encoding so every figure survives greyscale printing — this report gets printed.
-DASH = {"fedmosaic": "-", "fedprox": "--", "fedxgb": "-.", "fedavg": (0, (1, 1.5)), "local": (0, (4, 2))}
-MARKER = {"fedmosaic": "o", "fedprox": "s", "fedxgb": "^", "fedavg": "D", "local": "v"}
+DASH = {"fedmosaic": "-", "fedprox": "--", "fedavg": (0, (1, 1.5)), "local": (0, (4, 2))}
+MARKER = {"fedmosaic": "o", "fedprox": "s", "fedavg": "D", "local": "v"}
 INK, MUTED, GRID, CEIL = "#141d24", "#5c6b77", "#e3e9ed", "#141d24"
 
 LABEL = {
-    "fedprox": "FedProx", "fedxgb": "FedXgbBagging", "fedmosaic": "FedMosaic",
+    "fedprox": "FedProx", "fedmosaic": "FedMosaic",
     "fedavg": "FedAvg (baseline)", "local": "Local only (baseline)",
 }
 
@@ -139,11 +136,10 @@ def compute() -> dict:
     print("pooled ceilings ...")
     ceiling = {}
     for dataset in ("clinics", "flat"):
-        for model in ("logreg", "xgboost"):
-            with contextlib.redirect_stdout(io.StringIO()):
-                ceiling[f"{dataset}|{model}"] = run_centralized(
-                    model, seed=42, clinics=(dataset == "clinics")
-                )
+        with contextlib.redirect_stdout(io.StringIO()):
+            # Logistic regression is the only model in the codebase (MLP/XGBoost paths removed
+            # 2026-08-28), so the pooled ceiling is a single number per dataset.
+            ceiling[f"{dataset}|logreg"] = run_centralized(seed=42, clinics=(dataset == "clinics"))
 
     print("central DP sweep ...")
     dp = run_dp_sweep(rounds=DP_ROUNDS, seeds=SEEDS)
@@ -358,10 +354,10 @@ def _fig_dp(data, no_collab_worst: float):
 
 
 def _fig_payload(clinics):
-    """One measure across three named protocols, spanning two orders of magnitude -> log bars."""
+    """One measure across the two named protocols -> log bars."""
     import matplotlib.pyplot as plt
 
-    runs = ["fedprox", "fedmosaic", "fedxgb"]
+    runs = ["fedprox", "fedmosaic"]
     fig, ax = plt.subplots(figsize=(6.0, 2.6))
     vals = [clinics[r]["uplink"] for r in runs]
     ax.barh(np.arange(len(runs)), vals, height=0.5,
@@ -404,7 +400,7 @@ def _fig_mia(data):
             label="loss-threshold attack (Yeom)")
     ax.plot(x, shd, color=COLOR["fedprox"], lw=1.6, ls="--", marker="s", ms=5,
             label="shadow-model attack (Shokri)")
-    ax.axhline(ctrl["shadow_attack_auc"], color=COLOR["fedxgb"], lw=1.4, ls="-.")
+    ax.axhline(ctrl["shadow_attack_auc"], color="#1baf7a", lw=1.4, ls="-.")  # accent; no protocol uses palette slot 3 since the tree path was removed
     ax.text(0, ctrl["shadow_attack_auc"] + 0.006,
             f"positive control (overfit model) {ctrl['shadow_attack_auc']:.3f}",
             fontsize=8, color=INK)
@@ -482,10 +478,8 @@ def _tab_rounds(data):
             for run in ALL_RUNS
         )
         rows.append(f"    {r} & {cells} & {worst} \\\\")
-    # Eleven columns is already at the page's limit, so the headers are abbreviated and the
-    # column separation tightened rather than letting the table run into the margin.
-    short = {"fedprox": "Prox", "fedxgb": "XGB", "fedmosaic": "Mosaic",
-             "local": "Local", "fedavg": "Avg"}
+    # Headers are abbreviated and column separation tightened to keep the table within the margin.
+    short = {"fedprox": "Prox", "fedmosaic": "Mosaic", "local": "Local", "fedavg": "Avg"}
     head = " & ".join(short[r] for r in ALL_RUNS)
     _write_table("rounds", f"""\\setlength{{\\tabcolsep}}{{4.5pt}}\\small
 \\begin{{tabular}}{{r{'r' * len(ALL_RUNS)}{'r' * len(ALL_RUNS)}}}
@@ -522,12 +516,11 @@ def _tab_negcontrol(flat, data):
 def _tab_payload(clinics):
     desc = {
         "fedprox": "model coefficients --- a parameter vector fitted to this practice's patients",
-        "fedxgb": "serialized decision trees --- split thresholds are literal patient values",
         "fedmosaic": "predictions + expertise on a \\emph{public} cohort --- no parameter vector",
     }
     rows = "\n".join(
         f"    {LABEL[r]} & {desc[r]} & {clinics[r]['uplink']:,.0f} \\\\"
-        for r in ("fedprox", "fedmosaic", "fedxgb")
+        for r in ("fedprox", "fedmosaic")
     )
     _write_table("payload", f"""\\begin{{tabular}}{{lp{{7.4cm}}r}}
     \\toprule
@@ -668,7 +661,6 @@ def _macros(data, clinics, flat, ceil_auc, macros):
         "MaxRounds": f"{ROUNDS}",
         "DPRounds": f"{DP_ROUNDS}",
         "CeilingAUC": f"{ceil_auc:.3f}",
-        "CeilingXGB": f"{data['ceiling']['clinics|xgboost']['auc']:.3f}",
         "BestFedAUC": f"{clinics['fedprox']['auc']:.3f}",
         "BestFedWorst": f"{clinics['fedprox']['worst']:.3f}",
         "LocalAUC": f"{clinics['local']['auc']:.3f}",
@@ -677,13 +669,7 @@ def _macros(data, clinics, flat, ceil_auc, macros):
         "CeilingGapAbs": f"{abs(clinics['fedprox']['auc'] - ceil_auc):.3f}",
         "FedAvgAUC": f"{clinics['fedavg']['auc']:.3f}",
         "MosaicAUC": f"{clinics['fedmosaic']['auc']:.3f}",
-        "XGBAUC": f"{clinics['fedxgb']['auc']:.3f}",
-        "XGBWorst": f"{clinics['fedxgb']['worst']:.3f}",
-        "XGBGlobalGap": f"{clinics['fedprox']['auc'] - clinics['fedxgb']['auc']:.3f}",
-        "XGBWorstGap": f"{clinics['fedprox']['worst'] - clinics['fedxgb']['worst']:.3f}",
-        "XGBBandwidthRatio": f"{clinics['fedxgb']['uplink'] / clinics['fedprox']['uplink']:.0f}",
         "UplinkLogreg": f"{clinics['fedprox']['uplink']:,.0f}",
-        "UplinkXGB": f"{clinics['fedxgb']['uplink']:,.0f}",
         "UplinkMosaic": f"{clinics['fedmosaic']['uplink']:,.0f}",
         "NegControlMax": f"{max(flat[r]['auc'] for r in ALL_RUNS):.3f}",
         "NegControlCeiling": f"{data['ceiling']['flat|logreg']['auc']:.3f}",

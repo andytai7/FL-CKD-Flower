@@ -1,6 +1,6 @@
 ---
 name: flip-it-ckd
-description: Use when working anywhere in FL-CKD-Flower — the FLIP-IT federated CKD risk model. Covers Flower.ai federation (FedAvg, FedProx, FedXgbBagging, FedMosaic, ServerApp/ClientApp, SuperLink/SuperNode), the practice/clinic datasets, HL7 FHIR extraction, differential privacy and secure aggregation, dual-level AUROC/sensitivity metrics, and bias analysis. Trigger on any request to add or change a model, run or compare federation protocols, touch privacy layers, deploy to a SuperNode, or interpret CKD results.
+description: Use when working anywhere in FL-CKD-Flower — the FLIP-IT federated CKD risk model (logistic regression only). Covers Flower.ai federation (FedAvg, FedProx, FedMosaic, ServerApp/ClientApp, SuperLink/SuperNode), the practice/clinic datasets, HL7 FHIR extraction, differential privacy and secure aggregation, dual-level AUROC/sensitivity metrics, and bias analysis. Trigger on any request to add or change a model, run or compare federation protocols, touch privacy layers, deploy to a SuperNode, or interpret CKD results.
 ---
 
 # FLIP-IT CKD — working rules
@@ -32,13 +32,12 @@ repo, **not even as a "quick centralized baseline"**.
 
 | Model shape | Strategy | Verdict |
 |---|---|---|
-| Weight-averageable (linear, NN) | `FedAvg`, `FedProx` | ✅ |
-| Gradient-boosted trees | `FedXgbBagging`, `FedXgbCyclic` | ✅ |
-| Random forest, plain GBT/HistGB, LightGBM, CatBoost, k-NN, SVM | none | ❌ reject |
+| Logistic regression (the repo's only model) | `FedAvg`, `FedProx` | ✅ |
+| Random forest, GBT/HistGB, LightGBM, CatBoost, k-NN, SVM, NN | none in scope | ❌ reject |
 
 Before writing a new strategy, check it isn't already shipped:
 `python -c "import flwr.serverapp.strategy as s; print(dir(s))"`. FedAvg, FedProx, FedAdam/Adagrad/Yogi,
-FedAvgM, FedMedian, FedTrimmedAvg, Krum, MultiKrum, Bulyan, QFedAvg, FedXgb{Bagging,Cyclic} and the
+FedAvgM, FedMedian, FedTrimmedAvg, Krum, MultiKrum, Bulyan, QFedAvg and the
 four DP wrappers all exist. **SCAFFOLD does not** — it is only in Flower Baselines as a standalone
 PyTorch project.
 
@@ -50,9 +49,9 @@ PyTorch project.
 |---|---|
 | Build/repair env | `uv sync --extra dev --extra notebook` |
 | Regenerate clinics | `uv run ckd-clinics --clinics 10` |
-| Federated run | `uv run ckd-simulate --clinics --model logreg` |
+| Federated run | `uv run ckd-simulate --clinics` |
 | Protocol run | `uv run ckd-simulate --protocol fedmosaic --clinics` |
-| Pooled ceiling | `uv run ckd-baseline --model all --clinics` |
+| Pooled ceiling | `uv run ckd-baseline --clinics` |
 | Full benchmark | `uv run ckd-benchmark --rounds 20` |
 | Privacy sweep | `uv run ckd-privacy --seeds 42 43 44 45 46` |
 | Real Flower stack | `uv run flwr run .` |
@@ -105,9 +104,10 @@ Standing prohibitions:
 - Never pool practice data outside `centralized.py`.
 - Never type a DP ε derived from hand arithmetic into docs or reports — the accountant is `dp.py` (`epsilon_rdp`/`sigma_for_epsilon`), and only a **composed** budget over the configured rounds may be quoted (δ = 1e-5).
 
-Two constraints to state rather than paper over: **SecAgg+ cannot protect `FedXgbBagging`** (trees
-carry patient-derived split thresholds; there is no vector to mask), and **SecAgg+ is legacy-path
+One constraint to state rather than paper over: **SecAgg+ is legacy-path
 only in flwr 1.33** — it needs `LegacyContext` and cannot compose with `strategy.start()`.
+(The repo is logreg-only, so every payload is a maskable numeric vector; the tree path that SecAgg+
+could not protect was removed on 2026-08-28.)
 
 ## 7. Failure modes already hit here
 
@@ -115,8 +115,6 @@ only in flwr 1.33** — it needs `LegacyContext` and cannot compose with `strate
 |---|---|---|
 | `worst practice nan` | Strategy built without `evaluate_metrics_aggr_fn` | Pass `weighted_and_worst` |
 | `ImportError: cannot import name 'ClientApp' from 'flwr.app'` | 1.33 moved them | `ClientApp` ← `flwr.clientapp`; `ServerApp`/`Grid` ← `flwr.serverapp`; records ← `flwr.app` |
-| `aggregate_train` returns `None` for xgboost | `FedXgbBagging.current_bst` is set in `configure_train`, which the in-process runner bypasses | Set `strategy.current_bst` (`b""` on round 1) before aggregating |
-| MLP crashes on a single-class practice | `partial_fit` rejects a changed class set | Skip the local update, keep global weights (already handled in `models/mlp.py`) |
 | `SGDClassifier` dtype error | float32/float64 mismatch | Keep `coef_`/`X` float64; exchange float32 |
 | Centralized ceiling ≈ 0.5 while federated ≈ 0.8 | `ckd-baseline` defaulted to the flat CSV | Add `--clinics` |
 | All protocols look identical | Run too short, or the flat dataset | Use `--clinics`, ≥20 rounds |

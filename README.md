@@ -12,11 +12,16 @@ project background and the immutable project rules.
 **Every model is Flower-federatable** — the project deploys federated, so a model that can't run
 with Flower isn't a candidate ([CLAUDE.md §0](CLAUDE.md) rule 2).
 
-| Architecture | Flower strategy | Role |
+| Architecture | Flower strategy / protocol | Role |
 |---|---|---|
-| **Logistic regression** (SGD, warm-start) | `FedAvg` / `FedProx` | reference model (grant task T2.2) |
-| **Small MLP** (sklearn, torch-free) | `FedAvg` | linear-vs-non-linear comparison |
-| **XGBoost** | `FedXgbBagging` | gradient-boosted trees, federated by bagging |
+| **Logistic regression** (SGD, warm-start) | `FedAvg` / `FedProx` / `FedMosaic` | the only model class in the codebase (grant task T2.2) |
+
+> ⚠️ **One model, end to end (2026-08-28).** For this first deployment step the ENTIRE repository —
+> including everything bundled into the Flower App Bundle and pushed to the SuperLink
+> (`server_app.py` / `client_app.py`) — trains **only logistic regression**. No other model class
+> exists anywhere in the codebase: the MLP and XGBoost/`FedXgbBagging` paths were evaluated (below)
+> and were then **deleted**, not deprecated. FedAvg, FedProx and FedMosaic remain as aggregation
+> protocols *over logistic regression*.
 
 ---
 
@@ -38,7 +43,6 @@ The reproducible experiment, with charts, is
 | *centralized ceiling* | *0.861* | *n/a* | *n/a* |
 | **FedProx** | **0.808 ± 0.008** | **0.675 ± 0.054** | 352 |
 | **FedMosaic** | 0.800 ± 0.010 | 0.661 ± 0.068 | 3,600 |
-| **FedXgbBagging** | 0.729 ± 0.019 | 0.555 ± 0.045 | 21,521 |
 | *fedavg* (baseline) | *0.808 ± 0.008* | *0.675 ± 0.054* | *352* |
 | *local* (baseline) | *0.789 ± 0.008* | *0.495 ± 0.126* | *0* |
 
@@ -47,8 +51,13 @@ Four things worth knowing before you read further:
 - **Federation lands within 0.054 of the pooled ceiling** without any practice sharing a patient row.
 - **The win is equity, not average accuracy.** Global AUROC separates training-alone from the best
   protocol by 0.019; the *worst practice* separates them by **+0.180**.
-- **More rounds do not help.** The logistic protocols converge by round 10; XGBoost actively
-  *degrades* with more rounds (0.780 at round 5 → 0.686 at round 50).
+- **More rounds do not help.** The logistic protocols converge by round 10 and are flat
+  thereafter, so every extra round only spends privacy budget.
+- *Historical note (2026-08-28):* an sklearn **MLP** and gradient-boosted trees
+  (**XGBoost**/`FedXgbBagging`) were evaluated and **removed from scope**. The trees federated
+  poorly — 0.729 federated against a 0.861 pooled ceiling, degrading from 0.780 at round 5 to
+  0.686 at round 50, at 61× the bandwidth — and cannot be SecAgg-protected, so logistic regression
+  is now the only model in the repo.
 - **Differential privacy has a deployment standard**: patient-level DP-SGD inside each clinic,
   SecAgg+ masking on the wire, and a rule-based server agent ([`dpsgd.py`](dpsgd.py) +
   [`orchestrator.py`](orchestrator.py)) — deterministic census → ε-policy → per-clinic accountant
@@ -84,11 +93,10 @@ uv sync --extra dev --extra notebook
 uv run ckd-clinics --clinics 10             # per-clinic datasets -> data/clinics/
 
 uv run ckd-simulate --clinics               # logreg via FedAvg, non-IID
-uv run ckd-simulate --clinics --model xgboost
 uv run ckd-simulate --clinics --protocol fedmosaic
 uv run ckd-simulate --help                  # all flags
 
-uv run ckd-baseline --model all --clinics   # pooled ceiling on the SAME data
+uv run ckd-baseline --clinics               # pooled ceiling on the SAME data
 uv run ckd-benchmark --rounds 20            # full protocol benchmark -> results/
 uv run ckd-privacy --seeds 42 43 44 45 46   # central + local DP comparison baselines, SecAgg probe -> results/
 uv run ckd-audit   --seeds 42 43 44 45 46   # membership-inference leakage audit -> results/
@@ -160,12 +168,14 @@ Two execution modes:
 | `messages.py` | The Flower `Message` shapes the in-process runners exchange |
 | `task.py` | Local scaler, imbalanced-data metrics, T2.5 fairness metrics |
 | `data/` | Loading + missingness rules, Dirichlet partitioning, clinic generator, FHIR loader — plus the datasets |
-| `models/` | `logreg`, `mlp` (FedAvg) and `fedxgb` (FedXgbBagging) |
+| `models/` | `logreg` — the only model class (FedAvg/FedProx/FedMosaic all train it) |
 | `models/protocols/` | The protocol benchmark, incl. `fedmosaic.py` (a Flower `Strategy` subclass) |
+| `model_artifact.py` | Export the federated global model as JSON (`ckd-export-model` → `models/global_model.json`) + the `Scorer` that scores one patient from it |
+| `webapp.py` | Local physician demo: patient-details form → federated model's risk score (`ckd-web`, stdlib-only, no data stored) |
 | `extract_features.sql` | Canonical feature contract for the **real** Tomedo→PostgreSQL export |
 | `docs/` | `REPORT.md`, `PRIVACY.md`, `DEPLOYMENT.md`, the legal questions (`Law_Questions.docx`) + source PDFs |
 | `notebooks/` | Interactive federation walkthrough; `03_dpsgd_secagg_standard.ipynb` measures the DP-SGD + SecAgg + orchestrator standard live |
-| `diagrams/` | `dpsgd_secagg_standard.drawio` (five-step rule-based-agent flow) + `Healthcare-Page-6.drawio(1).png` (multi-page architecture sheet; page 4 = the full detailed standard diagram) |
+| `diagrams/` | `Flipit-privacy.xml` (drawio source) + `Flipit-privacy.png` (export): the deployment standard — rule-based server agent (census → ε-policy → accountant → ConfigRecord dispatch), SecAgg+ masking at the SuperLink, local DP-SGD per clinic | + `Flipit-process.xml` / `Flipit-process.png`: the end-to-end pipeline for clinicians (onboarding → in-practice Tomedo/FHIR data → round-zero census → federated rounds → governance gate → risk score at the point of care) — regenerated by `make_process_diagram.py` |
 
 ---
 
@@ -194,12 +204,97 @@ Two execution modes:
 
 ---
 
+## Physician demo webapp (local, synthetic)
+
+The smallest end-to-end cut of the "superlink pushes the model, practice serves it" story: export
+the federated global model once, then serve a local form where a physician enters patient features
+and gets the model's P(CKD stage ≥ 3). Stdlib-only, 127.0.0.1 by default, and the form collects
+**no identifiers** — inputs are scored and discarded.
+
+```bash
+uv run ckd-export-model     # 10 rounds of Flower FedAvg over data/clinics -> models/global_model.json
+uv run ckd-web --port 8080  # http://127.0.0.1:8080
+```
+
+Model and scaler come from the exported artifact (sandbox reference scaler on the pooled synthetic
+cohort — a deployment would pair the model with the practice-local scaler). ⚠️ Demo on synthetic
+data — not a medical device, not for clinical decisions.
+
+---
+
 ## Deploying
 
 SuperLink on central infrastructure, one SuperNode per practice, TLS and key-based node
-authentication throughout. Full runbook — certificates, key registration, `~/.flwr/config.toml`,
-`flwr run . flipit-prod`, and a two-node local rehearsal — in
+authentication throughout. The short version of the run is below; certificate generation, flag
+details, troubleshooting, and the per-practice go-live checklist are in the full runbook,
 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+
+### What a deployment needs
+
+Already in this repo (verified): the app itself — `uv run flwr run .` passes an end-to-end local
+simulation with 0 failures — plus all dependencies, pinned to flwr 1.33. Supplied per deployment
+and **not** committed anywhere:
+
+| Needed | Where it comes from |
+|---|---|
+| SuperLink Control API address (`host:9093`) | whoever runs the central host |
+| `ca.crt` of the deployment CA | the SuperLink admin (server cert/key too, if you host it) |
+| One P-384 key pair per practice, public half registered | generated on each practice machine; registered centrally with `flwr supernode register` |
+| `fhir-base-url` per practice | the practice's own FHIR server — only for `data-source=fhir` |
+
+### Run order
+
+1. **Central host** starts the SuperLink (TLS + key-based node auth):
+
+   ```bash
+   flower-superlink \
+     --ssl-ca-certfile ca.crt --ssl-certfile server.crt --ssl-keyfile server.key \
+     --enable-supernode-auth \
+     --fleet-api-address 0.0.0.0:9092 --control-api-address 0.0.0.0:9093 \
+     --database /var/lib/flower/flipit.db
+   ```
+
+2. **Admin** registers each practice's public key (the `.pub` files collected from practices):
+
+   ```bash
+   flwr supernode register praxis_01.pub flipit-prod
+   ```
+
+3. **Each practice** generates its key pair once and starts its SuperNode — the private key never
+   leaves the machine:
+
+   ```bash
+   openssl ecparam -name secp384r1 -genkey -noout -out praxis_01.key
+   openssl ec -in praxis_01.key -pubout -out praxis_01.pub   # send only the .pub to the admin
+
+   flower-supernode \
+     --superlink superlink.example.org:9092 \
+     --root-certificates ca.crt \
+     --auth-supernode-private-key praxis_01.key --auth-supernode-public-key praxis_01.pub \
+     --node-config "partition-id=0 num-partitions=25 fhir-base-url='http://localhost:8080/fhir'"
+   ```
+
+4. **Operator** points the CLI at the federation and starts the run. `flwr run` builds the app
+   bundle from `pyproject.toml` and ships it — nothing is copied by hand:
+
+   ```toml
+   # ~/.flwr/config.toml — note the CONTROL API port (9093), not the Fleet port
+   [superlink.flipit-prod]
+   address = "superlink.example.org:9093"
+   root-certificates = "/path/to/ca.crt"
+   insecure = false
+   ```
+
+   ```bash
+   # first: delete the pre-seeded [superlink.supergrid] entry (Flower Labs' endpoint)
+   # from ~/.flwr/config.toml and pin `default` to the consortium SuperLink
+   flwr run . flipit-prod --stream \
+     --run-config "num-server-rounds=10 num-practices=25 data-source='fhir' dpsgd-epsilon=3.0 secure-aggregation=true"
+   ```
+
+`num-practices` must equal the number of connected SuperNodes or the run never starts. A two-node,
+no-TLS rehearsal on one machine — do this before touching a practice — is in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#local-rehearsal--do-this-before-touching-a-practice).
 
 Each SuperNode can read its cohort from the practice's own **FHIR server** (`data-source=fhir`)
 instead of a CSV; the mapping lives in `data/fhir_loader.py` and emits the **canonical

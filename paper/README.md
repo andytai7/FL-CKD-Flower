@@ -3,6 +3,12 @@
 The report answering the preliminary legal assessment of 10 August 2026. Every section is one of
 counsel's questions; every number resolves through a generated macro.
 
+> **Scope note (2026-08-28).** The `FL-CKD-Flower` codebase was reduced to **logistic regression
+> only** after the pinned run this report is built from: the MLP and XGBoost/`FedXgbBagging` model
+> paths were evaluated and then deleted. Any table, figure, macro or passage here naming `fedxgb`,
+> the tree-based protocol, or an MLP is therefore a **historical measurement**, pending
+> regeneration with `make_paper.py --recompute` over the logreg-only code.
+
 ## Layout
 
 ```
