@@ -1,0 +1,12 @@
+% HAND-AUTHORED -- the deployment-standard sweep lives in notebooks/03_dpsgd_secagg_standard.ipynb,
+% outside the make_paper.py cache. Numbers below are that notebook's §5 sweep, quoted verbatim.
+\begin{tabular}{lcc}
+  \toprule
+  Target $\varepsilon^{*}$ & Global AUROC & Worst-practice AUROC \\
+  \midrule
+  no DP ($\sigma = 0$)      & $0.797 \pm 0.010$ & $0.655 \pm 0.057$ \\
+  $\varepsilon^{*} = 0.5$   & $0.799 \pm 0.010$ & $0.655 \pm 0.055$ \\
+  $\varepsilon^{*} = 2$     & $0.797 \pm 0.011$ & $0.644 \pm 0.062$ \\
+  $\varepsilon^{*} = 8$     & $0.798 \pm 0.010$ & $0.650 \pm 0.053$ \\
+  \bottomrule
+\end{tabular}

@@ -100,17 +100,21 @@ from it.
 | `server_app.py` | Flower `ServerApp` — `@app.main()`, `strategy.start()`, and `weighted_and_worst` (dual-level metrics + the L5 privacy policy). |
 | `simulate.py` | In-process runner over Flower's real strategies → `uv run ckd-simulate`. Fast per-round benchmarking without Ray. |
 | `benchmark.py` | The protocol benchmark → `uv run ckd-benchmark` → `results/benchmark.json`. |
-| `privacy.py` | Central + local DP sweeps, RDP accountant, SecAgg+ probe → `uv run ckd-privacy` → `results/privacy.json`. |
+| `privacy.py` | Central + local DP sweeps, SecAgg+ probe → `uv run ckd-privacy` → `results/privacy.json`. |
+| `dp.py` | The (ε, δ) accounting: RDP accountant + `sigma_for_epsilon` budget→noise inversion. The single definition shared by the sweeps, the audit, and the live server (`central-dp-epsilon`). |
 | `audit.py` | Membership-inference leakage audit (T2.5 / layer L6) → `uv run ckd-audit` → `results/audit.json`. |
+| `dpsgd.py` | Patient-level DP-SGD (Poisson sampling, per-sample clipping, Gaussian noise) + the in-process runner that emulates SecAgg masked-sum semantics over Flower's real FedAvg. |
+| `orchestrator.py` | Rule-based server agent: the Level-3 ε orchestrator (deterministic if-then logic + one accountant inversion; no LLM). `plan()` standardises per-clinic (batch, σ) so every clinic composes to the same target ε; `DpsgdOrchestrator` is the server-brain `FedAvg` subclass; `uniform_settings_audit` shows why uniform DP-SGD configs are incoherent across heterogeneous N. |
 | `centralized.py` | Pooled-data ceiling baselines → `uv run ckd-baseline`. **Use `--clinics` when comparing against `--clinics` runs.** |
 | `messages.py` | Single definition of the Flower `Message` shapes the in-process runners exchange. |
 | `task.py` | Local `StandardScaler`, the imbalanced-data metrics, and the T2.5 `fairness_metrics`. |
-| `data/` | `loader.py` (+ §3 missingness rules), `partition.py` (Dirichlet non-IID), `synthesize.py` (per-clinic generator + the FedMosaic public cohort), `fhir_loader.py` (the production FHIR path). Also holds the datasets. |
+| `data/` | `loader.py` (+ §3 missingness rules), `partition.py` (Dirichlet non-IID), `synthesize.py` (per-clinic generator + the FedMosaic public cohort), `fhir_loader.py` (the production FHIR path: canonical-contract preprocessor, de-identified, §3b). Also holds the datasets. |
 | `models/` | `base.py`, `logreg.py`, `mlp.py` (FedAvg-compatible), `fedxgb.py` (FedXgbBagging). |
 | `models/protocols/` | The protocol benchmark: `common.py` (explicit logistic regression), `fedmosaic.py` (the `Strategy` subclass). |
 | `extract_features.sql` | Canonical feature contract for the **real** Tomedo→PostgreSQL export. |
 | `docs/` | `PRIVACY.md`, `DEPLOYMENT.md`, `REPORT.md`, `LEGAL-TECHNICAL-ANSWER.md`, and the source PDFs. |
 | `notebooks/` | The federation walkthrough. |
+| `diagrams/` | Architecture draw.io diagram of the DP-SGD + SecAgg + orchestrator standard. |
 | `results/` | Generated benchmark/privacy JSON (gitignored). |
 
 ---
@@ -152,6 +156,12 @@ When real HL7-FHIR / Tomedo data arrives, **the SQL defines the truth**.
 >
 > The real contract adds **eGFR — the single strongest CKD predictor** — and `geschlecht`, without
 > which the T2.5 sex-based bias analysis cannot be run at all.
+>
+> **`data/fhir_loader.py` implements this contract over FHIR R4** — inclusion/exclusion, labs
+> (eGFR/HbA1c), the KDIGO-approximating incidence label, and L0 de-identification — and
+> `data/loader.py`'s `to_xy` dispatches on the label column, so the two tasks coexist without
+> touching the synthetic baseline. The synthetic schema remains the evaluation task until the
+> T2.1/T2.2 migration re-specifies models and benchmarks against the canonical one.
 
 ---
 
@@ -268,8 +278,7 @@ had invalidated every published DP figure.
 
 1. **Local DP is unusable at a defensible ε on this cohort.** At composed ε ≈ 4.3 the worst practice
    falls to 0.397 — below the 0.495 it gets by not collaborating at all. Central DP is far cheaper
-   but does **not** stop the server seeing individual updates. This is the live MS4 risk, and the
-   lever is the pilot's 25 practices ([PRIVACY.md §3](docs/PRIVACY.md)).
+   but does **not** stop the server seeing individual updates. ~~This is the live MS4 risk, and the lever is the pilot's 25 practices ([PRIVACY.md §3](docs/PRIVACY.md)).~~ **Resolved:** closed by the record-level DP-SGD + SecAgg + orchestration standard (`dpsgd.py` + `orchestrator.py`), measured in [`notebooks/03_dpsgd_secagg_standard.ipynb`](notebooks/03_dpsgd_secagg_standard.ipynb) — AUROC 0.797–0.799 held at composed ε 0.5–8 over 5 seeds. The 0.397 collapse above stays as the evidence trail for update-level local DP (PRIVACY.md §3.3).
 2. **The leakage audit covers 1 of the 3 attack families EDPB Opinion 28/2024 names.** Membership
    inference is built and passes at every setting including no-DP; **model inversion and
    reconstruction are not built** ([PRIVACY.md §5](docs/PRIVACY.md)).
@@ -277,7 +286,7 @@ had invalidated every published DP figure.
    about the method, not about the pilot model. Re-run before any anonymity claim.
 4. **No test suite.** `pytest` and the `test` target were removed rather than left broken; real
    tests still need writing. The determinism gate in PRIVACY.md §7 is the closest thing to one.
-5. **Fairness is audited by age band, not sex** — blocked on the real schema's `geschlecht`.
+5. **Fairness is audited by age band, not sex** — blocked on real *data*: the FHIR preprocessor now emits `geschlecht` (§3b), so the blocker is no longer the schema.
 6. **XGBoost federates poorly here** (0.712 vs a 0.860 pooled ceiling) and cannot be protected by
    SecAgg+. Logistic regression is the recommended deployment model.
 7. **The federated analytics path is not implemented here.** The legal assessment distinguishes it

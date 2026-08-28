@@ -155,9 +155,21 @@ flower-supernode \
 | `partition-id` | 0-based practice index; unique per SuperNode |
 | `num-partitions` | total practices in the federation (25 for the pilot) |
 | `fhir-base-url` | this practice's own FHIR server, read by `data/fhir_loader.py` |
+| `pseudonym-salt` | optional (default off): enables the per-practice salted-HMAC join key on the extraction — the T4.2 mechanism named in [PRIVACY.md](PRIVACY.md) §2, not a raw identifier |
 
 To read FHIR rather than CSV, run with `data-source=fhir` (step 7). `--clientappio-api-address`
 only needs to change if several SuperNodes share one host.
+
+The FHIR path builds the **canonical `extract_features.sql` contract** per patient — a different
+prediction task from the synthetic baseline (16 model columns incl. lab missing-indicators, and a
+CKD *incidence* label) — and de-identifies at the source: only the contract fields are read, rows
+carry no identifier, and row order is a deterministic per-extraction hash order. Validate the
+query against the real server before the run, on the practice machine:
+
+```bash
+uv run ckd-fhir-extract http://localhost:8080/fhir            # prints exclusion accounting + cohort summary
+uv run ckd-fhir-extract http://localhost:8080/fhir --t0 2025-08-26   # fixed landmark for reproducibility
+```
 
 ---
 
@@ -273,33 +285,50 @@ repo and is the faster check while iterating on app code.
 
 ---
 
-## Enabling the privacy layers
+All privacy layers are **run-config keys, not code edits** — no wrapping in `server_app.py` and no
+client mods by hand. `server_app.main()` reads them, derives every budget parameter itself, and
+refuses contradicting combinations.
 
-Central **Differential Privacy** works directly on the Message API. Wrap the strategy in
-`server_app.py`:
+**| The deployment standard (recommended).** Record-level DP-SGD inside each clinic with the
+ε shared across the federation:
 
-```python
-from flwr.serverapp.strategy import DifferentialPrivacyClientSideFixedClipping, FedAvg
-
-strategy = DifferentialPrivacyClientSideFixedClipping(
-    FedAvg(evaluate_metrics_aggr_fn=weighted_and_worst),
-    noise_multiplier=0.5, clipping_norm=1.0, num_sampled_clients=25,
-)
+```bash
+flwr run . flipit-prod --stream --run-config "dpsgd-epsilon=3.0 num-server-rounds=10"
+# …and, together on the production path, the masked wire:
+flwr run . flipit-prod --stream --run-config "dpsgd-epsilon=3.0 secure-aggregation=true"
 ```
 
-and add the matching client mod in `client_app.py`:
+You set only the target ε*. A **rule-based server agent** (no LLM — the four deterministic rules
+in `orchestrator.AGENT_RULES`, [PRIVACY.md §3.5](PRIVACY.md#35-the-deployment-standard-record-level-dp-sgd--secagg--rule-based-epsilon-orchestration)) runs at
+round zero: it counts the connected SuperNodes (rule 1 — census N is the only datum exchanged),
+enforces the fixed global policy (rule 2 — ε* with δ = 1e-5), inverts the shared RDP accountant
+per clinic to pick `(batchₖ, σₖ)` — larger σ for smaller clinics, every composed budget ≤ ε*
+(rule 3), and stamps each clinic's `ClinicPlan` into the ConfigRecord on its outgoing train
+instructions (rule 4). SuperNodes stay generic executors; changing ε is one server-side edit.
 
-```python
-from flwr.clientapp.mod import fixedclipping_mod
-app = ClientApp(mods=[fixedclipping_mod])
-```
+Two hard rules a pilot must plan around:
 
-Measured cost at this cohort size: see [PRIVACY.md §3](PRIVACY.md#3-l4--what-differential-privacy-actually-costs).
+- **The census has a floor.** A practice with N < 8 training patients gets **no unsafe plan**;
+  the run refuses to start until the federation is censused above the smallest candidate batch.
+  No SuperNode silently trains unprotected.
+- **One budget mechanism per run.** `dpsgd-epsilon` is mutually exclusive with `central-dp-epsilon`
+  and `local-dp-epsilon` (server raises at startup) — stacking them double-spends the same budget
+  without changing what is released.
 
 **Secure Aggregation needs the legacy workflow path** — `SecAggPlusWorkflow` requires a
-`LegacyContext` and cannot compose with `strategy.start()` in 1.33. The working construction is in
-[PRIVACY.md §4](PRIVACY.md#4-l3--secagg-is-achievable-but-not-on-the-same-code-path). Decide
-consciously which server path a given run uses.
+`LegacyContext` and cannot compose with `strategy.start()` in 1.33; the working construction is in
+[PRIVACY.md §4](PRIVACY.md#4-l3--secagg-is-achievable-but-not-on-the-same-code-path) and is what
+`secure-aggregation=true` drives, **including for the standard's census round** (the headcount is
+collected over the masked rails; on the legacy path the per-clinic plans are stamped into each
+client's `FitIns`). Verified end-to-end: 12 practices, fit and evaluate with 0 failures.
+
+**The two comparison baselines remain available** for audits/`PRIVACY.md` tables, decided by run
+config, not code: `central-dp-epsilon=<ε>` (budget-first; σ derived by `dp.sigma_for_epsilon` for
+the run's round count, server-side clipping — cannot combine with `secure-aggregation=true`, which
+the log will refuse) and `local-dp-epsilon=<ε>` (update-level client-side clipping; deployable
+under SecAgg but measured unusable at defensible budgets — worst practice 0.397 at ε≈4.3,
+[PRIVACY.md §3](PRIVACY.md#3-l4--what-differential-privacy-actually-costs)). The comparison is why
+the standard exists; the standard is what ships.
 
 ---
 
@@ -313,6 +342,7 @@ consciously which server path a given run uses.
 | `flwr run` cannot reach the SuperLink | Pointed at the Fleet port | Use the **Control API** port (9093) in `config.toml` |
 | Node rejected | Public key not registered | `flwr supernode register <key> flipit-prod` |
 | `ConnectionError` from the FHIR loader | Practice FHIR server down or wrong URL | Check `fhir-base-url` in `--node-config` |
+| `ValueError: ... below the smallest candidate batch 8` | A practice's census is under the DP-SGD floor (typical: low-`alpha` Dirichlet sims leave tiny partitions) | The rule-based agent refuses unsafe plans — federate only practices above the floor; in simulation, raise `alpha` (0.5 → 5.0) |
 
 ---
 
@@ -323,7 +353,8 @@ Per practice, before go-live:
 - [ ] `uv sync --extra dev` succeeds; `flwr` reports 1.33.x
 - [ ] `ca.crt` present; `praxis_NN.key` present and readable only by the service user
 - [ ] Public key registered centrally (`flwr supernode list` shows it)
-- [ ] FHIR server reachable: `curl -s $FHIR/metadata | head`
+- [ ] FHIR server reachable: `curl -s $FHIR/metadata | head`; cohort validated:
+      `uv run ckd-fhir-extract $FHIR` (prints inclusion accounting; no rows leave the machine)
 - [ ] `--node-config` has the right `partition-id` and `num-partitions`
 - [ ] Egress to the SuperLink on 9092 permitted; **no inbound** rule needed
 - [ ] Confirmed: no patient rows in any outbound payload — only model parameters
@@ -332,5 +363,9 @@ Per practice, before go-live:
       consortium SuperLink (Step 6) — no path to a Flower-operated endpoint
 - [ ] `metric-privacy = true` and `min-cohort-size` at the agreed floor (deployment default since
       the L5 hardening) — per-practice metric lines are not identified in the SuperLink logs
+- [ ] `dpsgd-epsilon` is the agreed target and the practice's train census clears the floor
+      (N ≥ 8) — go-live starts with the orchestrator's census round; the server log's plan table
+      must name this practice's own `(batch, σ)` before any weights move (a practice under the
+      floor is refused, deliberately)
 - [ ] Extract carries **no** `patientid` column (`extract_features.sql` §9) — the practice CSV is a
       pseudonymous extract, not personal data

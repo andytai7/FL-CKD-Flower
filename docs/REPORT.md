@@ -200,6 +200,16 @@ explanation is model capacity, not privacy engineering: eleven parameters over 3
 This is one of the three attack families EDPB Opinion 28/2024 names, on synthetic data. See
 [PRIVACY.md §5](PRIVACY.md).
 
+> **Since this baseline was written.** Both privacy dead-ends above are answered by the deployment
+> standard ([PRIVACY.md §3.5](PRIVACY.md), measured live in
+> [notebooks/03](../notebooks/03_dpsgd_secagg_standard.ipynb)): **record-level DP-SGD inside each
+> clinic + SecAgg+ on the wire + a rule-based server agent** that plans per-clinic (batch, σ) so
+> every clinic composes to the same target ε. At ε = 2–8 the ten-practice run holds **0.797–0.798
+> AUROC / 0.64–0.65 worst practice** — inside seed noise of its own no-DP runner row — against
+> local DP's collapse (0.627 / 0.397 at ε ≈ 4.3), and the live SecAgg+ path is verified with 12
+> practices and 0 failures. The §3 caveats remain the honest history of *why* the standard is what
+> it is.
+
 ---
 
 ## 4. Recommendation
@@ -233,7 +243,8 @@ round spends differential-privacy budget for no accuracy.
 | Synthetic label is prevalence, real label is incidence | `ckd_stage3plus` vs `ckd_incident` are different prediction tasks (CLAUDE.md §3b) |
 | 10 practices, not 25 | Understates what the funded pilot can achieve, especially for the DP budget |
 | Fairness audited by age band, not sex | The Antrag specifies sex; `geschlecht` exists only in the real schema |
-| No membership-inference testbed | DP's benefit is argued from ε, not demonstrated against an attack |
+�
+limination-stale-note|
 | FedMosaic's own DP mechanisms unimplemented | Its privacy claim currently rests on payload shape alone |
 | DP measured on FedAvg only | FedProx and FedMosaic DP costs unmeasured |
 | Worst-practice AUROC has high seed variance | ± 0.06–0.14 across seeds. Single-seed protocol rankings are unreliable — an earlier single-seed run put FedMosaic first, which five seeds reverse |

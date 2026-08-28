@@ -108,13 +108,22 @@ def build_client(context: Context) -> CKDPractice:
 
     `data-source = "csv"` (default) partitions the flat synthetic CSV; `"fhir"` queries this
     practice's own FHIR server. Either way the rows are loaded locally and never transmitted.
+
+    The two sources are different prediction tasks: `"csv"` is the synthetic 10-feature
+    prevalence schema; `"fhir"` builds the canonical extract_features.sql contract — 16 model
+    columns (8 features + lab missing-indicators), `geschlecht`, and a CKD incidence label
+    (CLAUDE.md §3b). `to_xy` dispatches on the frame's label column, so `build_client_from_frame`
+    and every model consume either unchanged.
     """
     run_config = context.run_config
     partition_id = int(context.node_config["partition-id"])
     num_partitions = int(context.node_config["num-partitions"])
 
     if str(run_config.get("data-source", "csv")) == "fhir":
-        df = load_practice_frame(str(context.node_config["fhir-base-url"]))
+        df = load_practice_frame(
+            str(context.node_config["fhir-base-url"]),
+            pseudonym_salt=context.node_config.get("pseudonym-salt"),
+        )
     else:
         df = load_partition(
             partition_id,
@@ -204,13 +213,111 @@ def _legacy_arrays(msg: Message):
     return parameters_to_ndarrays(to_ins(msg.content, True).parameters), True
 
 
+def _incoming_config(msg: Message, legacy: bool) -> dict:
+    """The instruction config for this round, whichever record shape carried it.
+
+    Message-API rounds pack it under the `config` ConfigRecord (`FedAvg.configure_train`);
+    legacy SecAgg+ rounds carry the FitIns config, preserved by the compat bridge the
+    same way the weights are. Returned as a plain dict either way, so the dispatch keys
+    below (`census`, `dp-sgd`, ...) read identically on both rails.
+    """
+    if legacy:
+        from flwr.compat.common.recorddict_compat import recorddict_to_fitins
+
+        return dict(recorddict_to_fitins(msg.content, True).config)
+    record = msg.content.config_records.get("config")
+    return dict(record) if record is not None else {}
+
+
+def _dpsgd_seed(partition_id: int, server_round: int) -> int:
+    """Deterministic per-(practice, round) seed for the DP-SGD noise stream.
+
+    Hash-combined in the spirit of dpsgd._round_seed / privacy._seed_dp_noise: a
+    practice's noise depends only on its own coordinates, never on draws a sibling
+    consumed — runs stay reproducible round by round.
+    """
+    return (partition_id * 9_973 + server_round * 91_193) % (2**32)
+
+
+def _dp_sgd_train(client: CKDPractice, ndarrays, cfg: dict, context: Context):
+    """Execute the rule-based server agent's (orchestrator.py) per-practice DP-SGD plan on the local
+    train split.
+
+    Patient-level Poisson DP-SGD via `dpsgd.dp_sgd_local` — the same closed-form
+    per-sample-gradient implementation the utility sweep (notebooks/03) was measured
+    with. The LogRegLocal adapter wraps the practice's ALREADY-PREPROCESSED arrays
+    (train-fitted scaler, stored on CKDPractice), so the broadcast weights and the
+    local objective share one feature space; re-fitting here would silently move it.
+
+    The practice is a generic executor: batch size, sigma, clip and epochs come from
+    the server-stamped plan and are taken verbatim (dpsgd never re-derives them, so the
+    accounted budget IS the executed budget); `dp-sgd-lr` defaults to
+    privacy.LEARNING_RATE (0.5), the step size the published numbers were produced at.
+
+    The dpsgd/privacy/protocol imports are function-local on purpose: those modules
+    import THIS module (`client_app._local_split`), so a top-level import would cycle.
+    """
+    import dpsgd
+    from models.protocols.common import LogRegLocal, from_flower_arrays, to_flower_arrays
+    from privacy import LEARNING_RATE
+
+    loc = LogRegLocal(
+        client.X_train,
+        client.y_train,
+        client.X_test,
+        client.y_test,
+        class_weight_balanced=bool(context.run_config["class-weight-balanced"]),
+    )
+    w = dpsgd.dp_sgd_local(
+        loc,
+        from_flower_arrays(ndarrays),
+        batch_size=int(cfg["batch-size"]),
+        sigma=float(cfg["noise-multiplier"]),
+        clip=float(cfg["clipping-norm"]),
+        epochs=int(cfg.get("local-epochs", client.local_epochs)),
+        lr=float(cfg.get("dp-sgd-lr", LEARNING_RATE)),
+        rng=np.random.default_rng(
+            _dpsgd_seed(client.partition_id, int(cfg.get("server-round", 0)))
+        ),
+    )
+    return to_flower_arrays(w), len(client.X_train)
+
+
 @app.train()
 def train(msg: Message, context: Context) -> Message:
-    """Warm-start from the global weights, train locally, return the updated weights."""
+    """Warm-start from the global weights, train locally, return the updated weights.
+
+    Participation floor (`min-train-examples` run config): if this practice's local train split is
+    smaller than the floor, it holds back entirely — no training — and replies with the global
+    weights unchanged and `num-examples = 0`. The strategy weights every reply by `num-examples`,
+    so a zero is a no-op in the average even before the server-side floor in
+    `server_app.CohortFloorFedAvg` drops the reply; under SecAgg+ zero examples zero the
+    protocol's own weighting factor, which is the only way to stay out of a masked sum. The
+    comparison uses the train-split size (not the raw cohort) because that is the weight the
+    average actually sees — and what the server-side filter reads.
+
+    Two instruction keys pre-empt the normal train path, stamped by the server (see
+    `_incoming_config` for how each rail carries them):
+
+    - `census` (Phase 0 of the DP-SGD standard): report the headcount ONLY. No training
+      runs, the broadcast weights are returned unchanged, and `num-examples` carries N —
+      the single low-sensitivity datum the rule-based server agent (orchestrator.py) plans
+      from.
+    - `dp-sgd` (the plan itself): run patient-level DP-SGD (`_dp_sgd_train`) under this
+      practice's own (batch-size, sigma, clip, epochs) block instead of plain local fit.
+    """
     client = build_client(context)
     ndarrays, legacy = _legacy_arrays(msg)
+    cfg = _incoming_config(msg, legacy)
 
-    updated, num_examples = client.fit(ndarrays)
+    if cfg.get("census"):
+        updated, num_examples = ndarrays, len(client.X_train)
+    elif cfg.get("dp-sgd"):
+        updated, num_examples = _dp_sgd_train(client, ndarrays, cfg, context)
+    elif len(client.X_train) < int(context.run_config.get("min-train-examples", 0) or 0):
+        updated, num_examples = ndarrays, 0
+    else:
+        updated, num_examples = client.fit(ndarrays)
 
     if legacy:
         from flwr.compat.common.recorddict_compat import fitres_to_recorddict

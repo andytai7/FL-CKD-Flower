@@ -27,7 +27,7 @@ what is planned.
 | **L1** Transport | TLS on SuperLink↔SuperNode and SuperLink↔`flwr` CLI | Network interception | ✅ Documented in [DEPLOYMENT.md](DEPLOYMENT.md) |
 | **L2** Identity | SuperNode public-key authentication; only registered practice keys admitted | A rogue node joining the federation | ✅ Documented in [DEPLOYMENT.md](DEPLOYMENT.md) |
 | **L3** Confidential aggregation | SecAgg+ — the server sees only the sum, never one practice's update | An honest-but-curious SuperLink operator | ✅ **Implemented and verified end-to-end (§4)** |
-| **L4** Formal guarantee | Central DP (server-side) and local DP (in-SuperNode): clipping + calibrated Gaussian noise | Reconstruction / membership inference from the released model | ✅ **Both measured (§3)** |
+| **L4** Formal guarantee | **Deployment standard: patient-level DP-SGD** (record-level Poisson sampling + per-sample clipping + Gaussian noise, inside the clinic) composed with L3 SecAgg+ on the wire; ε standardised across heterogeneous clinic sizes by the rule-based server agent (`orchestrator.py`). Central DP (server-side) and local DP (in-SuperNode) remain as the measured comparison baselines the standard was chosen against (§3.1–§3.3) | Reconstruction / membership inference from the released model | ✅ **Standard measured live (§3.5): `notebooks/03_dpsgd_secagg_standard.ipynb` + the in-process runner `dpsgd.py`** |
 | **L5** Metric hygiene | Suppress or anonymise per-practice metric lines below a cohort floor | Re-identification through the dual-level logs | ✅ **Implemented and ON by default** |
 | **L6** Audit | Fairness gaps by group; membership-inference testbed | Undetected bias / leakage (T2.5) | 🟡 **MIA built (§5)**; inversion + reconstruction still open |
 
@@ -50,8 +50,13 @@ are assigned chronologically, row position is a weak signal for relative enrolme
 code must not treat row position as information; `ORDER BY random()` removes the channel at the cost
 of reproducible extracts.
 
-The FHIR path was already clean: `data/fhir_loader.py` builds rows positionally and never carries a
-patient identifier into the frame.
+The FHIR path enforces L0 structurally: `data/fhir_loader.py` reads only the contract fields
+(`birthDate`, `gender`, condition codes/dates, lab values/dates, encounter dates), keeps the FHIR
+patient `id` in memory solely to join resources, and emits rows **ordered by SHA-256(id)** — a
+deterministic order that carries no enrolment information (the channel the SQL export still has).
+An optional per-practice `pseudonym-salt` node-config adds a `patient_pseudonym` column
+(HMAC-SHA256 over the id): exactly the salted-hash replacement named above, off by default, and
+never usable as a cross-practice link because each practice salts its own.
 
 ---
 
@@ -137,6 +142,82 @@ the logistic protocols are converged by round ~10 ([REPORT.md](REPORT.md)). At �
 rounds to 10 takes ε from 12.3 to **8.1** at no measured accuracy cost. `num-server-rounds` is now
 10 by default for exactly this reason. Subsampling amplification (`fraction-fit` < 1.0) is credited
 by the accountant and is the next lever.
+
+The live run is configured by the budget, not the noise: `central-dp-epsilon` in the run config
+makes the ServerApp derive σ by inverting the accountant (`dp.sigma_for_epsilon`) for the run's
+own round count, so the number a deployment documents stays fixed while the schedule changes.
+The accounting itself — `epsilon_rdp`, the retained naive bound, and the inversion — lives in
+`dp.py`, the single definition shared by this sweep, the audit, and the server.
+
+### 3.5 The deployment standard: record-level DP-SGD + SecAgg + rule-based epsilon orchestration
+
+§3.1–§3.3 are the baselines the standard was chosen against. The deployment route is
+**patient-level DP-SGD inside each clinic** — record-level Poisson sampling, per-sample gradient
+clipping, calibrated Gaussian noise — composed with L3 SecAgg+ masking on the wire, with ε
+**standardised across heterogeneous clinic sizes by the rule-based server agent**
+(`orchestrator.py`) — deterministic if-then logic plus one accountant inversion, no LLM anywhere
+in the loop. Measured live in `notebooks/03_dpsgd_secagg_standard.ipynb` through the in-process
+runner `dpsgd.py`.
+
+**The agent is a rule table, not a model.** Every decision is deterministic if-then logic,
+reproducible from the code, auditable line by line, and unchanged run to run:
+
+1. **Inventory.** At the start of the run, count the connected SuperNodes and read each
+   clinic's reported census N. N is the only datum exchanged.
+2. **Epsilon target.** One fixed global policy for the whole federation — the run-config
+   `dpsgd-epsilon` (ε*) plus δ = 1e-5. Same target for every clinic.
+3. **Parameter calculation.** For each clinic, invert the shared RDP accountant
+   (`dp.sigma_for_epsilon`): the smallest σ_k with ε(σ_k; q = b/N_k, T = ⌈E·N_k/b⌉ per round,
+   R rounds) ≤ ε*, picking b from the candidate grid to minimise per-epoch injected noise.
+   This subsumes the hand-tuned sketch "if N ≥ 1000 then σ=1.1, b=64; if N < 1000 then raise σ
+   or b" — a fixed σ per size band does **not** equalise ε (`uniform_settings_audit` below
+   measures uniform settings at ε 1.10 vs 16.04 for 50k vs 500 patients), so the rule is an
+   inversion, not a lookup.
+4. **Dispatch.** `ClinicPlan.to_config()` is bundled into the ConfigRecord stamped per
+   outgoing instruction; clinics are generic executors. Changing ε* is one server config
+   edit — zero phone calls.
+
+**Mechanism.** Each clinic trains on its own records with sampling rate q = b/N and
+T = ⌈epochs·N/b⌉ steps per round; R rounds × T steps compose through the shared RDP accountant
+(`dp.epsilon_rdp`, δ = 1e-5). The server collects exactly one number per clinic — the census N —
+and inverts the accountant (`dp.sigma_for_epsilon`) per clinic to pick a (batch b, σ) pair such
+that every clinic composes to the same target ε*. Among the batch candidates that fit inside N
+it keeps the one minimising expected per-epoch gradient-noise variance. The plan is stamped onto
+the clinic's outgoing train Message as five standard-name keys (`ClinicPlan.to_config()`) and the
+runner executes it verbatim, so the accounted T is the executed T. `DpsgdOrchestrator(FedAvg)`
+wires this into the live strategy.
+
+**Why uniform settings fail.** The same instruction delivers different privacy at different
+census sizes. `orchestrator.uniform_settings_audit` with batch=64, σ=1.5, E=10, R=10 gives a
+50,000-patient clinic ε = 1.10 and a 500-patient clinic ε = 16.04 — a ~15× spread from identical
+settings. On this wiring cohort under the deployment schedule (E=2, R=10) the same instruction
+already spans ε = 7.25 … 15.26: the large clinics are over-protected (utility spent needlessly)
+and the small ones under-protected (far more budget burned than anyone signed for).
+
+**The rule-based fix.** Every plan row is certified `achieved_ε ≤ ε*` **before it is issued**
+— the assertion is in `orchestrator.plan`, not in a convention. The census heterogeneity is
+absorbed by σ: at ε* = 8 the per-clinic σ spans 2.57 … 3.47 across the ten practices; at ε* = 2
+it spans 8.32 … 11.68 — in both cases the smallest census carries the largest σ.
+
+**Measured utility** — the full route through `dpsgd.py`, 10 practices, R = 10 rounds, δ = 1e-5,
+**5 seeds**, mean ± s.d. of the final round:
+
+| Target ε* (every clinic, at or below) | AUROC | Worst practice |
+|---:|---|---|
+| none (σ = 0, same runner) | 0.797 ± 0.010 | 0.655 ± 0.057 |
+| 0.5 | 0.799 ± 0.010 | 0.655 ± 0.055 |
+| 2 | 0.797 ± 0.011 | 0.644 ± 0.062 |
+| 8 | 0.798 ± 0.010 | 0.650 ± 0.053 |
+
+Contrast with the §3.2 update-level local-DP collapse: at **half** of the composed ε ≈ 4.3 budget
+where local DP fell to 0.627 ± 0.057 / worst 0.397 ± 0.130 — below the 0.495 a practice achieves
+by not collaborating at all — the standard holds 0.797 / 0.644 at ε* = 2, and the server
+additionally sees only the masked aggregate of record-noised updates.
+
+⚠️ The no-DP **same-runner** reference is 0.797, not the 0.8077 full-batch figure published in
+§3.1: DP-SGD applies per-sample clipping even at σ = 0, so the ~0.01 gap is the clipping bias of
+this training path, not data drift (notebook 02 jointly verified identical data handling across
+paths). Utility comparisons against the standard must use the same-runner row.
 
 ---
 
@@ -276,7 +357,7 @@ this revision should be re-checked against `results/privacy.json`.**
 | Model inversion and reconstruction attacks not built | L6 covers 1 of the 3 attack families EDPB names | AG Kamp (T2.5) |
 | Audit run on synthetic data only | A pass here is evidence about the method, not about the pilot model | pending real data |
 | No penetration / disclosure testing, no k-anonymity analysis | The analytics path's disclosure controls are unassessed | docport + Jorzig & Partner |
-| Local DP unusable at a defensible ε on 10 practices | MS4 risk; needs the pilot's 25 practices | IKIM / AG Kamp |
+| DP standard's numbers measured on the synthetic wiring cohort only | ~~Local DP unusable at a defensible ε~~ — **closed by the §3.5 standard** (record-level noise: no per-practice-per-round noise penalty; the standard holds 0.797 AUROC at ε* = 2 where local DP collapsed at ε ≈ 4.3). The residual risk: every ε/utility figure in §3.5 is wiring-cohort evidence — re-run on real data before any claim | pending real data |
 | FedMosaic's own DP mechanisms unimplemented | Its privacy claim rests on payload shape alone | this repo (T2.3) |
 | Fairness audited by age band, not sex | Antrag specifies sex; `geschlecht` exists only in the real schema | pending real data |
 | DP measured on FedAvg only | FedProx/FedMosaic DP cost unmeasured | this repo |
