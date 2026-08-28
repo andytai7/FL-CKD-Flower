@@ -27,7 +27,7 @@ from flwr.serverapp.strategy import DifferentialPrivacyServerSideFixedClipping, 
 
 from data import CANONICAL_NUM_FEATURES, NUM_FEATURES
 from dp import CLIPPING_NORM, DELTA, epsilon_rdp, sigma_for_epsilon
-from models import make_model
+from models import LogRegModel
 from orchestrator import DpsgdOrchestrator
 from orchestrator import plan as plan_clinics
 
@@ -239,8 +239,7 @@ def main(grid: Grid, context: Context) -> None:
     # The model width must match the schema the CLIENTS build: synthetic CSVs ship 10 features,
     # the canonical FHIR extract ships 16 (8 signals + 4 labs x (value, indicator)) — an
     # unconditional synthetic width crashed every data-source=fhir round-1 (2026-08 audit).
-    model = make_model(
-        str(rc["model"]),
+    model = LogRegModel(
         class_weight_balanced=bool(rc["class-weight-balanced"]),
         seed=int(rc["seed"]),
     )
@@ -414,10 +413,6 @@ def _run_secure_aggregation(grid: Grid, context: Context, initial_arrays, num_ro
     3. **The aggregate is still model parameters.** SecAgg+ answers who may see one practice's
        update; it does not by itself make the released model anonymous. That is what DP and the
        leakage audit are for.
-
-    It also cannot protect the XGBoost path at all: `FedXgbBagging` transmits serialized decision
-    trees, and there is no numeric vector to mask. A SecAgg-protected deployment is necessarily a
-    logistic-regression deployment.
 
     **Composing the DP-SGD standard** (`dpsgd-epsilon > 0`): the run opens with a 1-round
     Phase-0 census over the same SecAgg+ rails (practices report N only, the model is left

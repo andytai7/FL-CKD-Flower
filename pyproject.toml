@@ -12,21 +12,19 @@ license = { text = "MIT" }
 authors = [{ name = "Andy Tai" }]
 keywords = ["federated-learning", "healthcare", "ckd", "flower"]
 
-# Lightweight, torch-free stack: logistic regression + sklearn MLP + gradient-boosted trees.
+# Lightweight, torch-free stack: logistic regression only (sklearn SGDClassifier).
 # flwr pinned to the 1.33 line — the Message API (`@app.train()` / `ArrayRecord` / `Grid`) and the
 # `flwr.serverapp.strategy` namespace. This is the version the SuperLink/SuperNode deployment,
 # SecAgg+ and Differential Privacy documentation targets, and the one this project deploys against
 # (see docs/DEPLOYMENT.md). Federation *connection* config lives in ~/.flwr/config.toml from 1.30+;
 # run *defaults* still live here under [tool.flwr.app.config].
-# Every model is Flower-federatable (project rule, CLAUDE.md §0): logreg/mlp via FedAvg, xgboost via
-# FedXgbBagging — so xgboost is a core dependency, not an optional extra. (macOS needs OpenMP at
-# runtime for xgboost: `brew install libomp`.)
+# The single model is Flower-federatable (project rule, CLAUDE.md §0): FedAvg / FedProx / FedMosaic
+# are aggregation protocols over the logistic-regression parameters.
 dependencies = [
     "flwr[simulation]>=1.33,<1.34",
     "scikit-learn>=1.3.0",
     "pandas>=2.0.0",
     "numpy>=1.24.0",
-    "xgboost>=2.0.0",
     "dp-accounting>=0.6.0",
 ]
 
@@ -46,7 +44,7 @@ notebook = [
 [project.scripts]
 # Ray-free local federated simulation (works on paths with spaces). Run: uv run ckd-simulate
 ckd-simulate = "simulate:main"
-# Centralized "ceiling" baselines (non-federated reference). Run: uv run ckd-baseline --model xgboost
+# Centralized "ceiling" baseline (non-federated reference). Run: uv run ckd-baseline
 ckd-baseline = "centralized:main"
 # Generate synthetic per-clinic datasets (the FLIP-IT federation). Run: uv run ckd-clinics
 ckd-clinics = "data.synthesize:main"
@@ -65,6 +63,12 @@ ckd-phasemap = "phasemap:main"
 # Practice-side FHIR preprocessor rehearsal: canonical extract_features.sql frame from one
 # practice's own FHIR server, de-identified. Run: uv run ckd-fhir-extract http://localhost:8080/fhir
 ckd-fhir-extract = "data.fhir_loader:main"
+# Train the federated global model and export it as JSON for the demo webapp.
+# Run: uv run ckd-export-model
+ckd-export-model = "model_artifact:main"
+# Local physician demo: input patient details, get the federated model's risk score.
+# Run: uv run ckd-web --port 8080   (requires `ckd-export-model` first)
+ckd-web = "webapp:main"
 
 # Flat layout: data/ and models/ packages plus top-level app modules at the repo root.
 [tool.hatch.build.targets.wheel]
@@ -72,6 +76,7 @@ include = [
     "data", "models",
     "client_app.py", "server_app.py", "task.py", "centralized.py", "simulate.py",
     "messages.py", "benchmark.py", "privacy.py", "audit.py", "dp.py", "equity.py", "phasemap.py",
+    "model_artifact.py", "webapp.py",
 ]
 # Editable installs: put the project root on sys.path (path-based) rather than enumerating
 # modules, so every top-level .py here is importable and newly added files are picked up reliably.
@@ -93,8 +98,6 @@ num-server-rounds = 10      # federation rounds. Reduced from 20: the logistic p
                             # halves the composed epsilon at no measured accuracy cost.
 fraction-fit = 1.0          # fraction of practices training per round
 local-epochs = 2            # local partial_fit passes per round
-model = "logreg"            # flwr-run FedAvg app: logreg | mlp  (xgboost federates via FedXgbBagging
-                            # in `ckd-simulate`; see CLAUDE.md §6)
 num-practices = 12          # MUST equal options.num-supernodes below
 alpha = 0.5                 # Dirichlet non-IID concentration (small=skewed, large=IID)
 iid = false                 # set true for an IID even split

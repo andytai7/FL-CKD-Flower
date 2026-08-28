@@ -3,7 +3,7 @@
 # First time only:  make setup
 .DEFAULT_GOAL := help
 
-.PHONY: help setup clinics baseline simulate simulate-mlp iid notebook lab lint clean paper paper-data paper-zip
+.PHONY: help setup clinics baseline simulate iid notebook lab lint clean paper paper-data paper-zip
 
 help:           ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -15,14 +15,11 @@ setup:          ## Create/repair the venv and install everything (dev + notebook
 clinics:        ## Generate synthetic per-clinic datasets into data/clinics/
 	./scripts/clinics.sh
 
-baseline:       ## Centralized pooled-data ceiling (logreg + mlp + xgboost)
+baseline:       ## Centralized pooled-data ceiling (logreg pooled ceiling)
 	./scripts/baseline.sh
 
 simulate:       ## Federated simulation: logistic regression, 12 practices, non-IID
 	./scripts/simulate.sh
-
-simulate-mlp:   ## Federated simulation with the MLP architecture
-	./scripts/simulate.sh --model mlp
 
 iid:            ## Federated simulation on an IID split (comparison)
 	./scripts/simulate.sh --iid

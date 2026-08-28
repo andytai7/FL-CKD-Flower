@@ -1,17 +1,15 @@
-"""Centralized (pooled-data) baselines — the non-federated performance ceiling.
+"""Centralized (pooled-data) baseline — the non-federated performance ceiling.
 
-These train on ALL practices' data combined, which the federated setup is not allowed to do.
-Comparing federated (`ckd-simulate` / `flwr run`) numbers against these quantifies the price of
+This trains on ALL practices' data combined, which the federated setup is not allowed to do.
+Comparing federated (`ckd-simulate` / `flwr run`) numbers against this quantifies the price of
 privacy: the federated-vs-centralized gap.
 
-Every model here is the **same Flower-compatible architecture** as the federated path, just trained
-on pooled data — there are no extra, non-federatable models (project rule: we only use models that
-can run with Flower; see CLAUDE.md §0):
-- `logreg`, `mlp`  -> standardized features, warm-started like the federated FedAvg path
-- `xgboost`        -> the pooled counterpart of the federated FedXgbBagging trees
+The model here is the **same Flower-compatible architecture** as the federated path — the warm-
+started logistic regression (the only model this project trains), on standardized features, warm-
+started like the federated FedAvg path, just on pooled data (project rule: we only use models that
+can run with Flower; see CLAUDE.md §0).
 
-    uv run ckd-baseline --model all
-    uv run ckd-baseline --model xgboost
+    uv run ckd-baseline
     uv run ckd-baseline --clinics            # pooled data/clinics/ — comparable to --clinics runs
 
 ⚠️ **Match the data source to the federated run you are comparing against.** The default reads the
@@ -28,11 +26,8 @@ import numpy as np
 import pandas as pd
 
 from data import load_clinic_frames, load_dataframe, to_xy
-from models import make_model
-from models.fedxgb import predict_pooled, train_pooled
+from models import LogRegModel
 from task import compute_metrics, fit_scaler
-
-MODELS = ("logreg", "mlp", "xgboost")
 
 
 def load_pooled(clinics: bool = False) -> pd.DataFrame:
@@ -50,34 +45,24 @@ def _split(X, y, seed, test_frac=0.2):
     return X[:split], y[:split], X[split:], y[split:]
 
 
-def run_centralized(
-    model_name: str, seed: int = 42, local_epochs: int = 50, *, clinics: bool = False
-) -> dict:
+def run_centralized(seed: int = 42, local_epochs: int = 50, *, clinics: bool = False) -> dict:
+    """Train the pooled logistic regression and return its held-out metrics (the ceiling)."""
     X, y = to_xy(load_pooled(clinics))
     X_train, y_train, X_test, y_test = _split(X, y, seed)
 
-    if model_name == "xgboost":
-        # Trees use raw (unscaled) features — pooled counterpart of the federated FedXgbBagging.
-        bst = train_pooled(X_train, y_train, seed=seed)
-        y_score = predict_pooled(bst, X_test)
-    else:
-        # Linear / NN: standardized features + warm-started partial_fit (mirrors the FedAvg path).
-        scaler = fit_scaler(X_train)
-        X_train_s, X_test_s = scaler.transform(X_train), scaler.transform(X_test)
-        model = make_model(model_name, seed=seed)
-        model.initialize(X_train_s.shape[1])
-        model.fit(X_train_s, y_train, epochs=local_epochs)
-        y_score = model.predict_proba(X_test_s)
+    # Standardized features + warm-started partial_fit (mirrors the FedAvg path).
+    scaler = fit_scaler(X_train)
+    X_train_s, X_test_s = scaler.transform(X_train), scaler.transform(X_test)
+    model = LogRegModel(seed=seed)
+    model.initialize(X_train_s.shape[1])
+    model.fit(X_train_s, y_train, epochs=local_epochs)
+    y_score = model.predict_proba(X_test_s)
 
     return compute_metrics(y_test, y_score)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Centralized CKD baselines (pooled-data ceiling)")
-    parser.add_argument(
-        "--model", default="all", choices=[*MODELS, "all"],
-        help="Which centralized baseline(s) to run",
-    )
+    parser = argparse.ArgumentParser(description="Centralized CKD baseline (pooled-data ceiling)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--clinics", action="store_true",
@@ -86,15 +71,13 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    names = list(MODELS) if args.model == "all" else [args.model]
     source = "pooled data/clinics/" if args.clinics else "flat synthetic_ckd_data.csv"
-    print(f"Centralized (pooled-data) baselines — performance ceiling [{source}]\n" + "-" * 64)
-    for name in names:
-        m = run_centralized(name, seed=args.seed, clinics=args.clinics)
-        print(
-            f"{name:>9}:  AUROC={m['auc']:.3f}  sensitivity={m['sensitivity']:.3f}  "
-            f"accuracy={m['accuracy']:.3f}"
-        )
+    print(f"Centralized (pooled-data) baseline — performance ceiling [{source}]\n" + "-" * 64)
+    m = run_centralized(seed=args.seed, clinics=args.clinics)
+    print(
+        f"   logreg:  AUROC={m['auc']:.3f}  sensitivity={m['sensitivity']:.3f}  "
+        f"accuracy={m['accuracy']:.3f}"
+    )
 
 
 if __name__ == "__main__":

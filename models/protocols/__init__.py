@@ -1,11 +1,10 @@
 """The protocol benchmark (CLAUDE.md §4).
 
-**The three protocols under test:**
+**The protocols under test** (all logistic regression — the comparator set is logreg only):
 
 | protocol    | strategy                                      | model    | what crosses the wire          |
 |-------------|-----------------------------------------------|----------|--------------------------------|
 | `fedprox`   | `flwr.serverapp.strategy.FedProx`  (built-in) | logreg   | model coefficients             |
-| `fedxgb`    | `flwr.serverapp.strategy.FedXgbBagging` (built-in) | xgboost  | serialized decision trees |
 | `fedmosaic` | `models.protocols.fedmosaic.FedMosaic`        | logreg   | predictions + expertise on `U` |
 
 **Plus two reference baselines**, which are not protocols but are required to interpret the
@@ -16,9 +15,8 @@ protocols:
 | `local`  | no collaboration at all. The FedMosaic paper's central empirical finding is that local training is a strong baseline that most personalized-FL methods fail to beat — without it, "federation helped" is unfalsifiable. |
 | `fedavg` | plain weight averaging. FedProx *is* FedAvg + a proximal term, so this isolates what the μ term actually bought. |
 
-Every logistic-regression comparator shares one local learner, splits, scaler and seeds — only the
-protocol varies (immutable rule 6). `fedxgb` is a different model class and is reported alongside,
-not as a head-to-head row.
+Every comparator shares one local learner, splits, scaler and seeds — only the
+protocol varies (immutable rule 6).
 """
 
 from __future__ import annotations
@@ -38,12 +36,12 @@ from task import compute_metrics, fit_scaler
 from .common import LogRegLocal, from_flower_arrays, init_weights, to_flower_arrays
 from .fedmosaic import FedMosaic, MosaicPractice, build_reply as mosaic_reply, uplink_bits
 
-# The three protocols under test.
-PROTOCOLS = ("fedprox", "fedxgb", "fedmosaic")
+# The protocols under test.
+PROTOCOLS = ("fedprox", "fedmosaic")
 # Reference comparators — needed to interpret the protocols, not competing with them.
 BASELINES = ("local", "fedavg")
-# `fedxgb` is dispatched by simulate.py to the FedXgbBagging tree path, not to run_protocol.
-LOGREG_RUNNABLE = ("local", "fedavg", "fedprox", "fedmosaic")
+# The full runnable set — every comparator is logistic regression.
+LOGREG_RUNNABLE = (*BASELINES, *PROTOCOLS)
 
 # Local optimiser settings shared by every protocol, so the comparison isn't confounded.
 LEARNING_RATE = 0.5
@@ -94,8 +92,7 @@ def run_protocol(
     if name == "fedmosaic":
         return _run_fedmosaic(locals_, frames, config, num_rounds, quiet, epochs, report)
     raise ValueError(
-        f"Unknown logistic-regression protocol {name!r}; choose from {LOGREG_RUNNABLE}. "
-        "('fedxgb' is the tree path — simulate.py routes it to FedXgbBagging.)"
+        f"Unknown logistic-regression protocol {name!r}; choose from {LOGREG_RUNNABLE}."
     )
 
 
