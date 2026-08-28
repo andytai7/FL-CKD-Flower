@@ -115,8 +115,19 @@ _KDIGO_PREDECESSOR_DAYS = 90          # SQL §4: persistence window
 
 
 def _get(url: str, timeout: float) -> dict:
+    # Whole patient resources cross this socket, so the transport guard is in code, not docs:
+    # plaintext HTTP is loopback-only (the extraction runs on the practice machine; anything
+    # off-box must be TLS).
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" and (parsed.hostname or "").lower() not in (
+        "localhost", "127.0.0.1", "::1",
+    ):
+        raise ValueError(
+            f"FHIR base URL {url!r} is neither https nor loopback — patient resources would "
+            f"cross this host unencrypted"
+        )
     req = urllib.request.Request(url, headers={"Accept": "application/fhir+json"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - operator-supplied URL
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - guard above
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -163,7 +174,15 @@ def _coding_has(resource: dict, *, system: str, codes: tuple[str, ...]) -> bool:
 
 def _subject_id(resource: dict) -> str | None:
     ref = resource.get("subject", {}).get("reference", "")
-    return ref.split("/", 1)[1] if ref.startswith("Patient/") else None
+    if ref.startswith("Patient/"):
+        return ref.split("/", 1)[1]
+    # Absolute references — some HAPI configurations emit "https://hapi/fhir/Patient/123":
+    # take the trailing /Patient/<id> pair. Dropping these orphans the patient's Conditions,
+    # Observations, and Encounters, silently contaminating the exclusion window and labels.
+    parts = ref.rstrip("/").split("/")
+    if len(parts) >= 2 and parts[-2] == "Patient" and parts[-1]:
+        return parts[-1]
+    return None
 
 
 def _coding_code(resource: dict, field: str) -> str | None:
@@ -207,6 +226,7 @@ def _lab_series(
     loinc: tuple[str, ...],
     local_prefixes: tuple[str, ...],
     before: date,
+    stats: dict | None = None,
 ) -> dict[str, list[tuple[date, float]]]:
     """patient id -> ascending (date, value) list of usable measurements strictly before `before`."""
     series: dict[str, list[tuple[date, float]]] = {}
@@ -214,7 +234,11 @@ def _lab_series(
         if obs.get("status") not in _OBS_USABLE_STATUS:
             continue
         pid = _subject_id(obs)
-        if pid is None or not _lab_match(obs, loinc, local_prefixes):
+        if pid is None:
+            if stats is not None:
+                stats["unlinked_references"] += 1
+            continue
+        if not _lab_match(obs, loinc, local_prefixes):
             continue
         when = _parse_date(obs.get("effectiveDateTime"))
         value = _lab_value(obs)
@@ -261,6 +285,7 @@ def _extraction_stats() -> dict:
     return {
         "patients_total": 0,
         "excluded_test": 0,
+        "unlinked_references": 0,
         "excluded_deceased": 0,
         "excluded_demographics": 0,
         "excluded_age": 0,
@@ -310,6 +335,7 @@ def _extract(
     for enc in encounters:
         pid = _subject_id(enc)
         if pid is None:
+            stats["unlinked_references"] += 1
             continue
         period = enc.get("period") or {}
         when = (
@@ -324,12 +350,17 @@ def _extract(
     by_patient: dict[str, list[tuple[list[str], date | None]]] = {}
     for cond in conditions:
         pid = _subject_id(cond)
-        if pid is None or not _is_confirmed_current(cond):
+        if pid is None:
+            stats["unlinked_references"] += 1
+            continue
+        if not _is_confirmed_current(cond):
             continue
         by_patient.setdefault(pid, []).append((_codes(cond), _condition_date(cond)))
 
     # Labs: feature series end at t0 (SQL §6/§7); the label series runs to end of window (§4).
-    egfr_pre = _lab_series(observations, EGFR_LOINC, EGFR_LOCAL_PREFIXES, t0)
+    # stats counts unlinked observations once — the same list feeds all three _lab_series calls, so
+    # only the first pass tallies them.
+    egfr_pre = _lab_series(observations, EGFR_LOINC, EGFR_LOCAL_PREFIXES, t0, stats)
     hba1c_pre = _lab_series(observations, HBA1C_LOINC, HBA1C_LOCAL_PREFIXES, t0)
     egfr_window = _lab_series(observations, EGFR_LOINC, EGFR_LOCAL_PREFIXES, window_end)
 

@@ -8,6 +8,19 @@ __pycache__/
 
 # Generated per-clinic datasets — regenerate with `uv run ckd-clinics`, never committed.
 data/clinics/
+data/clinics_ladder/
+# Deployment secrets/keys (created by docs/DEPLOYMENT.md's openssl steps) and run-time artifacts —
+# none must ever be committed. Ad-hoc patient extracts land under data/** (any CSV except the
+# committed synthetic fixture).
+*.key
+*.crt
+*.csr
+*.srl
+*.pem
+.env*
+.flwr/
+data/**/*.csv
+!data/synthetic_ckd_data.csv
 
 # OS
 .DS_Store

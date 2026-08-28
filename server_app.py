@@ -4,7 +4,7 @@ Per CLAUDE.md §5, a non-IID federation can look strong on the global aggregate 
 an outlier practice. So the evaluate-metrics aggregator reports BOTH the sample-weighted global
 mean AND the worst (min) client.
 
-Privacy note (CLAUDE.md §9, layer L5): naming a practice alongside its AUROC and cohort size is
+Privacy note (CLAUDE.md §8, layer L5): naming a practice alongside its AUROC and cohort size is
 itself a disclosure channel to whoever operates the SuperLink. Per-practice lines are therefore
 suppressed for cohorts below `min-cohort-size`, and can be switched to fully anonymous reporting
 with `metric-privacy = true` — which keeps the worst-practice number (the thing rule 5 exists to
@@ -14,6 +14,7 @@ protect) while dropping the identity that makes it re-identifying.
 from __future__ import annotations
 
 import math
+import random
 from logging import INFO
 
 from flwr.app import (
@@ -24,7 +25,7 @@ from flwr.compat.common.recorddict_compat import arrayrecord_to_parameters
 from flwr.serverapp import Grid, ServerApp
 from flwr.serverapp.strategy import DifferentialPrivacyServerSideFixedClipping, FedAvg
 
-from data import NUM_FEATURES
+from data import CANONICAL_NUM_FEATURES, NUM_FEATURES
 from dp import CLIPPING_NORM, DELTA, epsilon_rdp, sigma_for_epsilon
 from models import make_model
 from orchestrator import DpsgdOrchestrator
@@ -126,7 +127,16 @@ def _log_per_practice(rows: list[dict], weighting_key: str) -> None:
     floor = _METRIC_PRIVACY["min_cohort_size"]
     suppressed = 0
 
-    for m in sorted(rows, key=lambda r: r.get("partition-id", -1)):
+    if anonymous:
+        # Sorting by partition-id would make line order a bijection to identity (an ordering
+        # channel — the same class documented for the SQL export). Printing order must carry no
+        # identity signal: shuffle with unseeded server-side randomness each round.
+        rows = rows.copy()
+        random.Random().shuffle(rows)
+    else:
+        rows = sorted(rows, key=lambda r: r.get("partition-id", -1))
+
+    for m in rows:
         n = int(float(m.get(weighting_key, 0)))
         if n < floor:
             suppressed += 1
@@ -226,12 +236,17 @@ def main(grid: Grid, context: Context) -> None:
         )
 
     # Initialize global parameters from a fresh model so all clients start from the same shapes.
+    # The model width must match the schema the CLIENTS build: synthetic CSVs ship 10 features,
+    # the canonical FHIR extract ships 16 (8 signals + 4 labs x (value, indicator)) — an
+    # unconditional synthetic width crashed every data-source=fhir round-1 (2026-08 audit).
     model = make_model(
         str(rc["model"]),
         class_weight_balanced=bool(rc["class-weight-balanced"]),
         seed=int(rc["seed"]),
     )
-    model.initialize(NUM_FEATURES)
+    model.initialize(
+        CANONICAL_NUM_FEATURES if str(rc.get("data-source", "csv")) == "fhir" else NUM_FEATURES
+    )
     initial_arrays = ArrayRecord(model.get_parameters())
 
     if bool(rc.get("secure-aggregation", False)):
@@ -239,8 +254,17 @@ def main(grid: Grid, context: Context) -> None:
             raise ValueError(
                 "central-dp-epsilon and secure-aggregation cannot both be set on this code path: "
                 "central DP clips and noises individual updates in the clear, which SecAgg+ masks "
-                "before the server reads them. For a released-model guarantee under SecAgg+, set "
-                "local-dp-epsilon instead."
+                "before the server reads them. For a released-model guarantee under SecAgg+, use "
+                "the deployment standard (dpsgd-epsilon): record-level DP-SGD inside the clinic."
+            )
+        if local_dp_epsilon > 0:
+            raise ValueError(
+                "local-dp-epsilon and secure-aggregation cannot both be set on flwr 1.33: "
+                "LocalDpMod (flwr.clientapp.mod) is message-API-shaped — it requires the reply's "
+                "ArrayRecord keys to mirror the incoming ones — while the SecAgg+ legacy rail "
+                "bridges through 'fitins.parameters'/'fitres.parameters'. Verified at runtime "
+                "2026-08: the combination errors every train reply. Use dpsgd-epsilon for the "
+                "released-model guarantee under SecAgg+."
             )
         _run_secure_aggregation(grid, context, initial_arrays, num_rounds)
         return
@@ -264,21 +288,45 @@ def main(grid: Grid, context: Context) -> None:
         # keeps the composed RDP budget under it for this run's round count. Clipping norm and δ
         # match the measured sweeps (privacy.py), and no subsampling amplification is credited —
         # see dp.py for the conventions.
+        #
+        # Weight-accounting correction: Flower's server-side mechanism spreads the Gaussian
+        # noise sigma*C UNIFORMLY over the sampled clients, while FedAvg aggregates weighted by
+        # num-examples — so a clinic with update share rho_k effectively receives sigma/(K*rho_k),
+        # and the plain uniform-weight inversion would under-cover the largest practice. The live
+        # path therefore inverts at the LARGEST census share: sigma_raw = sigma* * (K * rho_max),
+        # exactly binding there and conservative for every smaller practice. Client subsampling
+        # would break the claimed epsilon and is refused outright.
+        if abs(float(rc["fraction-fit"]) - 1.0) > 1e-12:
+            raise ValueError(
+                "central-dp-epsilon requires fraction-fit=1.0: the max-share noise correction "
+                "is only exact when every clinic contributes every round."
+            )
         cdp_delta = float(rc.get("central-dp-delta", DELTA) or DELTA)
-        sigma = sigma_for_epsilon(cdp_epsilon, rounds=num_rounds, delta=cdp_delta)
+        cdp_census = _census_round(grid, initial_arrays)
+        total_n = sum(cdp_census.values())
+        rho_max = max(cdp_census.values()) / total_n
+        k_practices = len(cdp_census)
+        sigma_base = sigma_for_epsilon(cdp_epsilon, rounds=num_rounds, delta=cdp_delta)
+        sigma = sigma_base * k_practices * rho_max
         sampled = max(int(int(rc["num-practices"]) * float(rc["fraction-fit"])), 1)
         log(
             INFO,
-            "Central DP: target EPS=%.4g composed over %d rounds at delta=%.3g -> "
-            "noise multiplier sigma=%.4f (accounted EPS=%.4g); clipping norm %g, "
-            "%d practices sampled per round",
+            "Central DP: target EPS=%.4g composed over %d rounds at delta=%.3g; census %d "
+            "patients over %d practices, largest share rho=%.3f -> uniform-weight sigma=%.4f "
+            "scaled by K*rho=%.3f to sigma=%.4f (largest practice effective sigma=%.4f, "
+            "accounted EPS=%.4g; smaller practices stronger); clipping norm %g",
             cdp_epsilon,
             num_rounds,
             cdp_delta,
+            total_n,
+            k_practices,
+            rho_max,
+            sigma_base,
+            k_practices * rho_max,
             sigma,
-            epsilon_rdp(sigma, num_rounds, cdp_delta),
+            sigma / (k_practices * rho_max),
+            epsilon_rdp(sigma / (k_practices * rho_max), num_rounds, cdp_delta),
             CLIPPING_NORM,
-            sampled,
         )
         strategy = DifferentialPrivacyServerSideFixedClipping(
             strategy,
@@ -511,9 +559,34 @@ def _run_secure_aggregation(grid: Grid, context: Context, initial_arrays, num_ro
                     ) from None
                 stamped.append((
                     client,
-                    FitIns(fit_ins.parameters, {**fit_ins.config, **clinic_plan.to_config()}),
+                    FitIns(
+                        fit_ins.parameters,
+                        # server-round rides along exactly as on the message-API rail (FedAvg
+                        # auto-injects it into train_config there): the client's DP-SGD seed is
+                        # (seed, partition, round), so without this key every legacy round would
+                        # replay round 0's Poisson lots and Gaussian noise — the composed-ε
+                        # account in dp.py assumes independent draws per step.
+                        {"server-round": server_round, **fit_ins.config, **clinic_plan.to_config()},
+                    ),
                 ))
             return stamped
+
+        def aggregate_fit(self, server_round, results, failures):
+            # Census integrity: the plan certified composed ε from the census N, but the
+            # mechanism executes with the real local N; a disagreeing reply is the unsafe
+            # over-report direction (orchestrator.py module docstring). Refuse — do not
+            # fold a decertified reply into the average. Same equality check as the
+            # Message-API rail (DpsgdOrchestrator.aggregate_train).
+            for client, fit_res in results:
+                expected = plans[str(client.cid)].n_patients
+                if int(fit_res.num_examples) != expected:
+                    raise RuntimeError(
+                        f"DP-SGD census integrity: clinic {client.cid} replied with "
+                        f"num-examples={fit_res.num_examples} but the plan was certified "
+                        f"for N={expected}; the composed epsilon certificate no longer "
+                        f"describes this reply. Re-run the census before restarting."
+                    )
+            return super().aggregate_fit(server_round, results, failures)
 
     legacy = LegacyContext(
         context=context,

@@ -14,6 +14,13 @@ Conventions (matching docs/PRIVACY.md §3.4):
   expected to rest on a recognised accountant, not hand-rolled composition).
 - Updates are clipped to `CLIPPING_NORM` at the server, so in units of the clipping norm the
   per-update sensitivity is 1.0 and the Gaussian mechanism's noise multiplier IS the accounted σ.
+- That identity holds under UNIFORM weighting. Flower's server-side mechanism spreads σ·C evenly
+  across the sampled clients while FedAvg weights each update by num-examples, so a clinic with
+  update share ρ_k effectively receives σ/(K·ρ_k): under-credited for ρ_k > 1/K, over-credited
+  for the rest. The LIVE central-DP path therefore inverts σ at the largest census share
+  (server_app scales by K·ρ_max and refuses fraction-fit < 1.0, where the correction is not
+  exact). Historic sweep tables keep the uniform-weight ε column and annotate the largest
+  practice's effective figure for their anchor row.
 - δ is conventional, not consequential: set comfortably below 1/n (the pilot cohort is ~3.5k
   patients, so 1e-5 has ~30x headroom). The lawyer-facing number is ε; δ is justified by rule.
 - No subsampling amplification is credited in the live path when `fraction-fit` < 1.0: FedAvg

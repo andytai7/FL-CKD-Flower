@@ -32,6 +32,7 @@ translating through Flower's own compat bridge.
 from __future__ import annotations
 
 import numpy as np
+from flwr.app.message_type import MessageType
 from flwr.app import ArrayRecord, Context, Message, MetricRecord, RecordDict
 from flwr.clientapp import ClientApp
 
@@ -39,7 +40,7 @@ from data import load_partition, load_practice_frame, to_xy
 from models import make_model
 from task import compute_metrics, fit_scaler
 
-# δ is conventionally set below 1/n (CLAUDE.md §9 / privacy.py); the pilot cohort is ~3.5k patients.
+# δ is conventionally set below 1/n (docs/PRIVACY.md §1 / privacy.py); the pilot cohort is ~3.5k patients.
 LOCAL_DP_DELTA = 1e-5
 LOCAL_DP_CLIPPING_NORM = 1.0
 
@@ -155,6 +156,12 @@ def _local_dp_dispatch(msg: Message, ctx: Context, call_next):
     if epsilon <= 0:
         return call_next(msg, ctx)
 
+    # The 1.33 `LocalDpMod` (unlike its legacy twin) errors any message that is not exactly one
+    # ArrayRecord in and out — evaluate replies (metrics-only) and SecAgg+ control messages would
+    # all be replaced by errors. Gate here: local DP applies to train traffic only.
+    if msg.metadata.message_type != MessageType.TRAIN or len(msg.content.array_records) != 1:
+        return call_next(msg, ctx)
+
     from flwr.clientapp.mod import LocalDpMod
 
     mod = LocalDpMod(
@@ -229,14 +236,17 @@ def _incoming_config(msg: Message, legacy: bool) -> dict:
     return dict(record) if record is not None else {}
 
 
-def _dpsgd_seed(partition_id: int, server_round: int) -> int:
-    """Deterministic per-(practice, round) seed for the DP-SGD noise stream.
+def _dpsgd_seed(run_seed: int, partition_id: int, server_round: int) -> int:
+    """Deterministic per-(run, practice, round) seed for the DP-SGD noise stream.
 
     Hash-combined in the spirit of dpsgd._round_seed / privacy._seed_dp_noise: a
     practice's noise depends only on its own coordinates, never on draws a sibling
-    consumed — runs stay reproducible round by round.
+    consumed — runs stay reproducible round by round. The run seed is in the mix
+    (unlike a bare (partition, round) hash): two runs differing only in `seed`
+    must differ in noise as well as splits, and a redeployed run must not reuse
+    the same noise stream.
     """
-    return (partition_id * 9_973 + server_round * 91_193) % (2**32)
+    return (run_seed * 1_000_003 + partition_id * 9_973 + server_round * 91_193) % (2**32)
 
 
 def _dp_sgd_train(client: CKDPractice, ndarrays, cfg: dict, context: Context):
@@ -277,8 +287,12 @@ def _dp_sgd_train(client: CKDPractice, ndarrays, cfg: dict, context: Context):
         epochs=int(cfg.get("local-epochs", client.local_epochs)),
         lr=float(cfg.get("dp-sgd-lr", LEARNING_RATE)),
         rng=np.random.default_rng(
-            _dpsgd_seed(client.partition_id, int(cfg.get("server-round", 0)))
-        ),
+                _dpsgd_seed(
+                    int(context.run_config.get("seed", 42)),
+                    client.partition_id,
+                    int(cfg.get("server-round", 0)),
+                )
+            ),
     )
     return to_flower_arrays(w), len(client.X_train)
 
