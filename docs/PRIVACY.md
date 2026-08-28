@@ -28,7 +28,7 @@ what is planned.
 | **L2** Identity | SuperNode public-key authentication; only registered practice keys admitted | A rogue node joining the federation | ✅ Documented in [DEPLOYMENT.md](DEPLOYMENT.md) |
 | **L3** Confidential aggregation | SecAgg+ — the server sees only the sum, never one practice's update | An honest-but-curious SuperLink operator | ✅ **Implemented and verified end-to-end (§4)** |
 | **L4** Formal guarantee | **Deployment standard: patient-level DP-SGD** (record-level Poisson sampling + per-sample clipping + Gaussian noise, inside the clinic) composed with L3 SecAgg+ on the wire; ε standardised across heterogeneous clinic sizes by the rule-based server agent (`orchestrator.py`). Central DP (server-side) and local DP (in-SuperNode) remain as the measured comparison baselines the standard was chosen against (§3.1–§3.3) | Reconstruction / membership inference from the released model | ✅ **Standard measured live (§3.5): `notebooks/03_dpsgd_secagg_standard.ipynb` + the in-process runner `dpsgd.py`** |
-| **L5** Metric hygiene | Suppress or anonymise per-practice metric lines below a cohort floor | Re-identification through the dual-level logs | ✅ **Implemented and ON by default** |
+| **L5** Metric hygiene (server-side log) | Suppress small cohorts; anonymised lines are shuffled per round so line position carries no identity | Re-identification through the dual-level logs | ✅ **Implemented and ON by default** (log layer; the wire itself is still attributed — see §8) |
 | **L6** Audit | Fairness gaps by group; membership-inference testbed | Undetected bias / leakage (T2.5) | 🟡 **MIA built (§5)**; inversion + reconstruction still open |
 
 ---
@@ -74,9 +74,18 @@ Flower's real `DifferentialPrivacyServerSideFixedClipping` wrapped around `FedAv
 | 0.00 | **0.808 ± 0.008** | 0.675 ± 0.054 | — | — | — |
 | 0.10 | 0.808 ± 0.007 | 0.676 ± 0.056 | 1211.8 | 969 | −0.000 |
 | 0.25 | 0.807 ± 0.008 | 0.669 ± 0.054 | 244.0 | 388 | −0.001 |
-| 0.50 | 0.803 ± 0.011 | 0.681 ± 0.033 | 81.1 | 194 | −0.005 |
+| 0.50 | 0.803 ± 0.011 | 0.681 ± 0.033 | 81.1 | 194 | −0.004 |
 | 1.00 | 0.794 ± 0.014 | 0.646 ± 0.061 | 30.1 | 97 | −0.014 |
 | 2.00 | 0.773 ± 0.017 | 0.608 ± 0.097 | **12.3** | 48 | −0.035 |
+> **Per-practice reading of the ε columns.** Flower spreads the noise σ·C evenly over the sampled
+> clients while FedAvg weights each update by cohort size, so practice *k* effectively receives
+> σ/(K·ρ_k) with ρ_k its update share (K·ρ_max = 1.63 on this census). The ε columns quote the
+> uniform-weight figure; the largest practice's effective ε reads top-to-bottom
+> 3017 / 562 / 173 / 59.7 / **22.8** (≈1.9–2.5× above the uniform quote at low σ). These sweeps
+> predate the correction and are kept as the *utility* evidence — utility is unchanged; only the
+> per-practice ε reading moves. The LIVE `central-dp-epsilon` path IS corrected: server_app
+> inverts σ at the largest census share (σ scaled by K·ρ_max, requires fraction-fit = 1.0), so
+> the configured bound holds for every practice, largest included.
 
 ### 3.2 Local DP — noise applied inside the SuperNode, before transmission
 
@@ -195,7 +204,7 @@ already spans ε = 7.25 … 15.26: the large clinics are over-protected (utility
 and the small ones under-protected (far more budget burned than anyone signed for).
 
 **The rule-based fix.** Every plan row is certified `achieved_ε ≤ ε*` **before it is issued**
-— the assertion is in `orchestrator.plan`, not in a convention. The census heterogeneity is
+— the check is a `raise` in `orchestrator.plan`, not a convention (and not a bare assert — survives `python -O`). The census heterogeneity is
 absorbed by σ: at ε* = 8 the per-clinic σ spans 2.57 … 3.47 across the ten practices; at ε* = 2
 it spans 8.32 … 11.68 — in both cases the smallest census carries the largest σ.
 
@@ -204,17 +213,17 @@ it spans 8.32 … 11.68 — in both cases the smallest census carries the larges
 
 | Target ε* (every clinic, at or below) | AUROC | Worst practice |
 |---:|---|---|
-| none (σ = 0, same runner) | 0.797 ± 0.010 | 0.655 ± 0.057 |
-| 0.5 | 0.799 ± 0.010 | 0.655 ± 0.055 |
-| 2 | 0.797 ± 0.011 | 0.644 ± 0.062 |
-| 8 | 0.798 ± 0.010 | 0.650 ± 0.053 |
+| none (σ = 0, same runner) | 0.796 ± 0.010 | 0.659 ± 0.050 |
+| 0.5 | 0.798 ± 0.008 | 0.660 ± 0.051 |
+| 2 | 0.797 ± 0.011 | 0.649 ± 0.060 |
+| 8 | 0.798 ± 0.011 | 0.656 ± 0.050 |
 
 Contrast with the §3.2 update-level local-DP collapse: at **half** of the composed ε ≈ 4.3 budget
 where local DP fell to 0.627 ± 0.057 / worst 0.397 ± 0.130 — below the 0.495 a practice achieves
-by not collaborating at all — the standard holds 0.797 / 0.644 at ε* = 2, and the server
+by not collaborating at all — the standard holds 0.797 / 0.649 at ε* = 2, and the server
 additionally sees only the masked aggregate of record-noised updates.
 
-⚠️ The no-DP **same-runner** reference is 0.797, not the 0.8077 full-batch figure published in
+⚠️ The no-DP **same-runner** reference is 0.796, not the 0.8077 full-batch figure published in
 §3.1: DP-SGD applies per-sample clipping even at σ = 0, so the ~0.01 gap is the clipping bias of
 this training path, not data drift (notebook 02 jointly verified identical data handling across
 paths). Utility comparisons against the standard must use the same-runner row.
@@ -362,3 +371,4 @@ this revision should be re-checked against `results/privacy.json`.**
 | Fairness audited by age band, not sex | Antrag specifies sex; `geschlecht` exists only in the real schema | pending real data |
 | DP measured on FedAvg only | FedProx/FedMosaic DP cost unmeasured | this repo |
 | Row order in the SQL export still follows `patientid` | Weak ordering channel; documented, not removed | docport |
+| Per-round per-practice metric payloads (partition-id, cohort size, AUROC) cross the wire attributed | L5 anonymises the server LOG only; the semi-honest SuperLink still sees named small-cohort metrics — inherent to dual-level aggregation (weighted AND worst need practice grouping). Mitigation is contractual, not cryptographic | federation operator + DPA |

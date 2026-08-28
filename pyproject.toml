@@ -56,6 +56,12 @@ ckd-benchmark = "benchmark:main"
 ckd-privacy = "privacy:main"
 # Membership-inference leakage audit (T2.5 / privacy layer L6). Run: uv run ckd-audit
 ckd-audit = "audit:main"
+# Era 14 (docs/ERAS.md): equity-priced privacy orchestration -> results/equity.json
+# Run: uv run ckd-equity   (smoke: uv run ckd-equity --quick)
+ckd-equity = "equity:main"
+# Era 15 (docs/ERAS.md): census-spread phase map for privacy orchestration -> results/phasemap.json
+# Run: uv run ckd-phasemap   (smoke: uv run ckd-phasemap --quick)
+ckd-phasemap = "phasemap:main"
 # Practice-side FHIR preprocessor rehearsal: canonical extract_features.sql frame from one
 # practice's own FHIR server, de-identified. Run: uv run ckd-fhir-extract http://localhost:8080/fhir
 ckd-fhir-extract = "data.fhir_loader:main"
@@ -65,7 +71,7 @@ ckd-fhir-extract = "data.fhir_loader:main"
 include = [
     "data", "models",
     "client_app.py", "server_app.py", "task.py", "centralized.py", "simulate.py",
-    "messages.py", "benchmark.py", "privacy.py", "audit.py", "dp.py",
+    "messages.py", "benchmark.py", "privacy.py", "audit.py", "dp.py", "equity.py", "phasemap.py",
 ]
 # Editable installs: put the project root on sys.path (path-based) rather than enumerating
 # modules, so every top-level .py here is importable and newly added files are picked up reliably.
@@ -103,7 +109,7 @@ data-source = "csv"
 # data/fhir_loader.py (no identifier read or emitted; optional `pseudonym-salt` in --node-config
 # adds the salted-HMAC join key named in docs/PRIVACY.md §2).
 
-# Privacy layer L5 (CLAUDE.md §9): anonymise per-practice metric lines / suppress small cohorts.
+# Privacy layer L5 (docs/PRIVACY.md §1): anonymise per-practice metric lines / suppress small cohorts.
 # ON by default. Naming a practice alongside its cohort size and AUROC every round is itself a
 # disclosure to whoever reads the SuperLink logs, independently of the gradients. This is the
 # DEPLOYMENT default; the research runners (ckd-simulate / ckd-benchmark) keep their own flags and
@@ -119,9 +125,14 @@ min-cohort-size = 20
 # keeping the research baseline comparable.
 min-train-examples = 0
 
-# Privacy layer L4-local (CLAUDE.md §9): clip + Gaussian-noise each practice's update INSIDE the
+# Privacy layer L4-local (docs/PRIVACY.md §1): clip + Gaussian-noise each practice's update INSIDE the
 # SuperNode, before transmission. This is the only mechanism that changes what the AGGREGATING PARTY
 # receives — central DP noises during aggregation, so the server sees every un-noised update first.
+# SEMANTICS: a PER-ROUND budget applied to every outgoing train message — the true cost over the
+# run composes across all num-server-rounds (privacy.py does this conversion for the sweeps; e.g.
+# per-round 2.0 over 20 rounds is a composed ε≈10 under this accountant, not 2.0). The sibling
+# central-dp-epsilon / dpsgd-epsilon keys are COMPOSED targets. Applied to train replies only;
+# evaluate replies and SecAgg+ control messages pass unchanged.
 # 0 = off. Utility cost at this cohort size is severe; measure with `uv run ckd-privacy` first.
 local-dp-epsilon = 0.0
 
@@ -130,9 +141,12 @@ local-dp-epsilon = 0.0
 # channel is what secure-aggregation / local-dp address). The budget is the configured quantity:
 # `central-dp-epsilon` is the composed RDP ε over ALL num-server-rounds at `central-dp-delta`,
 # and dp.sigma_for_epsilon inverts the accountant to derive the per-run noise multiplier σ —
-# so the reported number stays fixed while the round count changes (halving rounds halves the
-# required noise). 0 = off. Measured cost at ε≈8: −0.035 AUROC. Mutually exclusive with
-# secure-aggregation on this code path (server_app raises if both are set).
+# so the reported number stays fixed while the round count changes (fewer rounds need less noise
+# for the same ε). The live path then SCALES σ by K·ρ_max (census-derived largest update share):
+# Flower noises the uniform average while FedAvg weights by num-examples, so the largest practice
+# would otherwise receive an effectively smaller σ than credited (server_app._: central-DP block).
+# Requires fraction-fit = 1.0 (client subsampling would break that correction). 0 = off.
+# Mutually exclusive with secure-aggregation on this code path (server_app raises if both are set).
 central-dp-epsilon = 0.0
 central-dp-delta = 1e-5
 
@@ -142,10 +156,13 @@ central-dp-delta = 1e-5
 # with secure-aggregation=true (the pair IS the standard).
 dpsgd-epsilon = 0.0
 
-# Privacy layer L3 (CLAUDE.md §9): SecAgg+ — the server can open only the aggregate, never one
+# Privacy layer L3 (docs/PRIVACY.md §1): SecAgg+ — the server can open only the aggregate, never one
 # practice's update. OFF by default because it switches the run onto the legacy workflow (flwr 1.33
 # ships SecAgg+ only in the legacy namespace), which the protocol benchmark does not use.
-# The SuperNodes must be started with FLIPIT_SECAGG=1 to match — see docs/DEPLOYMENT.md.
+# Enablement ENTIRELY from this run-config key: the ServerApp reads it (workflow selection) and
+# broadcasts it; each SuperNode's dispatching mod (client_app._secagg_dispatch) reads the broadcast
+# copy and joins the protocol. No node-side environment variable exists — nothing reads
+# FLIPIT_SECAGG (an earlier draft comment claimed otherwise; deleted 2026-08 audit).
 secure-aggregation = false
 secagg-num-shares = 3                 # Shamir shares per practice
 secagg-reconstruction-threshold = 2   # shares needed to recover a dropped practice's mask

@@ -104,6 +104,7 @@ from it.
 | `dp.py` | The (ε, δ) accounting: RDP accountant + `sigma_for_epsilon` budget→noise inversion. The single definition shared by the sweeps, the audit, and the live server (`central-dp-epsilon`). |
 | `audit.py` | Membership-inference leakage audit (T2.5 / layer L6) → `uv run ckd-audit` → `results/audit.json`. |
 | `dpsgd.py` | Patient-level DP-SGD (Poisson sampling, per-sample clipping, Gaussian noise) + the in-process runner that emulates SecAgg masked-sum semantics over Flower's real FedAvg. |
+| `equity.py` | Era 14 sweep — census-shaped per-clinic ε at a frozen clinic-mean budget → `uv run ckd-equity` → `results/equity.json`. Registration + verdict: `docs/ERAS.md` §3–§4. |
 | `orchestrator.py` | Rule-based server agent: the Level-3 ε orchestrator (deterministic if-then logic + one accountant inversion; no LLM). `plan()` standardises per-clinic (batch, σ) so every clinic composes to the same target ε; `DpsgdOrchestrator` is the server-brain `FedAvg` subclass; `uniform_settings_audit` shows why uniform DP-SGD configs are incoherent across heterogeneous N. |
 | `centralized.py` | Pooled-data ceiling baselines → `uv run ckd-baseline`. **Use `--clinics` when comparing against `--clinics` runs.** |
 | `messages.py` | Single definition of the Flower `Message` shapes the in-process runners exchange. |
@@ -112,9 +113,9 @@ from it.
 | `models/` | `base.py`, `logreg.py`, `mlp.py` (FedAvg-compatible), `fedxgb.py` (FedXgbBagging). |
 | `models/protocols/` | The protocol benchmark: `common.py` (explicit logistic regression), `fedmosaic.py` (the `Strategy` subclass). |
 | `extract_features.sql` | Canonical feature contract for the **real** Tomedo→PostgreSQL export. |
-| `docs/` | `PRIVACY.md`, `DEPLOYMENT.md`, `REPORT.md`, `LEGAL-TECHNICAL-ANSWER.md`, and the source PDFs. |
+| `docs/` | `PRIVACY.md`, `DEPLOYMENT.md`, `REPORT.md`, `ERAS.md` (the era registry: pruned lane list, Era-14 registration, verdicts), `Law_Questions.docx`, and the source PDFs. |
 | `notebooks/` | The federation walkthrough. |
-| `diagrams/` | Architecture draw.io diagram of the DP-SGD + SecAgg + orchestrator standard. |
+| `diagrams/` | The camera-ready diagrams of the DP-SGD + SecAgg + rule-based-agent standard: `dpsgd_secagg_standard.drawio` (five-step flow) + the multi-page `Healthcare-Page-6.drawio(1).png` (page 4 = detailed standard). |
 | `results/` | Generated benchmark/privacy JSON (gitignored). |
 
 ---
@@ -287,7 +288,7 @@ had invalidated every published DP figure.
 4. **No test suite.** `pytest` and the `test` target were removed rather than left broken; real
    tests still need writing. The determinism gate in PRIVACY.md §7 is the closest thing to one.
 5. **Fairness is audited by age band, not sex** — blocked on real *data*: the FHIR preprocessor now emits `geschlecht` (§3b), so the blocker is no longer the schema.
-6. **XGBoost federates poorly here** (0.712 vs a 0.860 pooled ceiling) and cannot be protected by
+6. **XGBoost federates poorly here** (0.729, 5-seed mean (0.712 was the seed-42 only figure) vs a 0.860 pooled ceiling) and cannot be protected by
    SecAgg+. Logistic regression is the recommended deployment model.
 7. **The federated analytics path is not implemented here.** The legal assessment distinguishes it
    from the AI training path; this repo only implements the latter. "Analytics" is not a Flower

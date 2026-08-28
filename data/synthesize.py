@@ -111,17 +111,25 @@ def _generate_patients(arch: Archetype, n: int, rng: np.random.Generator) -> pd.
 
 def generate_clinics(
     num_clinics: int = 10, *, base_seed: int = 42, min_n: int = 120, max_n: int = 600,
+    sizes: list[int] | None = None,
 ) -> list[tuple[int, str, pd.DataFrame]]:
     """Generate `num_clinics` practices as (clinic_id, archetype_name, DataFrame).
 
     Non-IID on all three axes from CLAUDE.md §4: archetype covariate shift, prevalence/label shift,
     and quantity shift (unequal panel sizes). One global seed → derived per-clinic seeds.
+    `sizes` (Era 15 ladder, docs/ERAS.md erratum 5-a): an optional exact per-clinic size
+    override — required because uniform band draws compress realized max/min to < 10× over
+    ten clinics. When given it MUST have length `num_clinics`; it replaces only the size draw
+    (per-clinic content seeds and the archetype cycle are untouched), and the default call is
+    bit-identical to before.
     """
     rng = np.random.default_rng(base_seed)
     clinics = []
     for cid in range(num_clinics):
         arch = ARCHETYPES[cid % len(ARCHETYPES)]
-        n = int(rng.integers(min_n, max_n + 1))  # quantity shift
+        n = sizes[cid] if sizes is not None else int(rng.integers(min_n, max_n + 1))
+        if sizes is not None and len(sizes) != num_clinics:
+            raise ValueError(f"sizes has {len(sizes)} entries for {num_clinics} clinics")
         clinic_rng = np.random.default_rng(base_seed + 1000 + cid)  # derived per-clinic seed
         clinics.append((cid, arch.name, _generate_patients(arch, n, clinic_rng)))
     return clinics

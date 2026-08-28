@@ -11,12 +11,26 @@ listed so that the record is complete; 6--12 are open.
         central question from ``the server sees individual updates'' into a configuration choice.
         (\S\ref{sec:secagg})
   \item \textbf{Implement and measure local DP.} Establishes what noise-at-the-practice actually
-        costs rather than asserting availability. The answer is uncomfortable and is reported as
-        such. (\S\ref{sec:noise})
+        costs rather than asserting availability. The update-level answer is uncomfortable and is
+        reported as such; item~5 is its resolution. (\S\ref{sec:noise})
   \item \textbf{Build the membership-inference audit}, with a positive control. Converts ``DP is
         configured'' into a reported attack result. (\S\ref{sec:anontest})
   \item \textbf{Close the two side channels} the direct identifier in the export, and identified
         per-practice metric logging, now anonymised by default. (\S\ref{sec:sidechannels})
+  \item \textbf{Ship the deployment standard: logistic regression with record-level DP-SGD inside
+        each practice, SecAgg+ on the wire, and per-practice $\varepsilon$ orchestration by a
+        rule-based server agent.} The planner is deterministic — a rule table, not a model; no LLM
+        is involved anywhere in the stack. R1~\emph{inventory}: read each practice's census $N$,
+        the only datum exchanged; R2~\emph{fixed global policy}: one target
+        $(\varepsilon^{*},\, \delta = 10^{-5})$ for the whole federation; R3~\emph{per-practice
+        inversion}: for each practice, invert the shared R\'enyi-DP accountant for the batch size
+        and smallest $\sigma$ that certify $\varepsilon \le \varepsilon^{*}$; R4~\emph{dispatch}:
+        issue each practice's plan as ordinary run configuration. Measured utility is flat from
+        $\varepsilon^{*} = 0.5$ to $8$ (\S\ref{sec:noise}), and the standard composes with secure
+        aggregation in one live run, zero failures (\S\ref{sec:secagg}). This closes the
+        engineering question of whether a meaningful in-practice privacy guarantee is reachable;
+        the choice of $\varepsilon^{*}$ itself remains a policy decision for the consortium, which
+        this report deliberately does not make. (\S\ref{sec:noise}, \S\ref{sec:reduce})
 \end{enumerate}
 
 \subsection*{Open, in priority order}
@@ -34,8 +48,10 @@ listed so that the record is complete; 6--12 are open.
   \item \textbf{Confirm the round count on real data.} Convergence by round~10 is the cheapest
         privacy improvement available and it is currently a synthetic-data finding.
         (\S\ref{sec:reduce})
-  \item \textbf{Evaluate subsampling amplification.} Participation below 1.0 earns a real budget
-        reduction the accountant can now credit; the cost is convergence speed. (\S\ref{sec:reduce})
+  \item \textbf{Evaluate practice-level subsampling amplification.} The standard already credits
+        record-level Poisson subsampling within each practice; participation below 1.0 across
+        rounds would earn a further budget reduction the accountant can credit. The cost is
+        convergence speed. (\S\ref{sec:reduce})
   \item \textbf{Re-run the whole evidence base on the pilot cohort} once real data exists
         accuracy, budget and audit alike. The right-hand column of \S\ref{sec:realdata} is the
         checklist.
@@ -52,11 +68,11 @@ listed so that the record is complete; 6--12 are open.
   Item & Work package & Milestone \\
   \midrule
   Secure aggregation (1), operator decision (6) & T2.3 & MS4 (month 18) \\
-  DP measurement (2), accounting (3), amplification (11) & T2.3 & MS4 \\
-  Leakage audit (4), remaining attacks (7) & T2.5 & MS4 onward \\
-  Side channels (5) & T2.3 / data collection & before MS3 \\
+  DP measurement (2), deployment standard (5), amplification (10) & T2.3 & MS4 \\
+  Leakage audit (3), remaining attacks (7) & T2.5 & MS4 onward \\
+  Side channels (4) & T2.3 / data collection & before MS3 \\
   Analytics indicator spec (8) & analytics work package &  \\
-  Re-run on pilot cohort (12) & T2.4 & MS5 (month 24) \\
+  Re-run on pilot cohort (11) & T2.4 & MS5 (month 24) \\
   \bottomrule
 \end{tabular}
 \end{center}

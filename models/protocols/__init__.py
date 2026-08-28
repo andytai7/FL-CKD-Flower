@@ -69,7 +69,7 @@ def _prepare(frames: list, config: dict) -> list[LogRegLocal]:
     return locals_
 
 
-def _public_features(frames: list, config: dict) -> np.ndarray:
+def _public_features(config: dict) -> np.ndarray:
     """The shared public cohort, scaled with a scaler fit on the public data itself.
 
     Every practice holds the identical copy of `U`, so scaling it locally would make each
@@ -165,7 +165,7 @@ def _run_weight_sharing(name, locals_, num_rounds, quiet, epochs, report) -> lis
 
 def _run_fedmosaic(locals_, frames, config, num_rounds, quiet, epochs, report) -> list[dict]:
     """FedMosaic — predictions + expertise on a shared public cohort; no model ever shared."""
-    X_public = _public_features(frames, config)
+    X_public = _public_features(config)
     strategy = FedMosaic(evaluate_metrics_aggr_fn=weighted_and_worst)
     practices = [
         MosaicPractice(loc, X_public, lr=LEARNING_RATE, epochs=epochs) for loc in locals_

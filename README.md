@@ -26,8 +26,7 @@ Full write-up: **[docs/REPORT.md](docs/REPORT.md)** · privacy architecture:
 **[docs/PRIVACY.md](docs/PRIVACY.md)** · deployment: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**
 
 **The answer to counsel's questions is the Technical Expert Report in [`paper/`](paper/)** — one
-section per question, built from a single pinned run (`./scripts/paper.sh`). It supersedes
-`docs/LEGAL-TECHNICAL-ANSWER.md`, which is retained but marked superseded.
+section per question, built from a single pinned run (`./scripts/paper.sh`).
 
 The reproducible experiment, with charts, is
 [`notebooks/01_explore_and_baselines.ipynb`](notebooks/01_explore_and_baselines.ipynb).
@@ -37,11 +36,11 @@ The reproducible experiment, with charts, is
 | | AUROC | Worst practice | Uplink bits/round |
 |---|---|---|---|
 | *centralized ceiling* | *0.861* | *n/a* | *n/a* |
-| **FedProx** | **0.808 ± 0.009** | **0.675 ± 0.060** | 352 |
-| **FedMosaic** | 0.800 ± 0.011 | 0.661 ± 0.076 | 3,600 |
-| **FedXgbBagging** | 0.729 ± 0.021 | 0.555 ± 0.050 | 20,902 |
-| *fedavg* (baseline) | *0.808 ± 0.009* | *0.675 ± 0.061* | *352* |
-| *local* (baseline) | *0.789 ± 0.009* | *0.495 ± 0.141* | *0* |
+| **FedProx** | **0.808 ± 0.008** | **0.675 ± 0.054** | 352 |
+| **FedMosaic** | 0.800 ± 0.010 | 0.661 ± 0.068 | 3,600 |
+| **FedXgbBagging** | 0.729 ± 0.019 | 0.555 ± 0.045 | 21,521 |
+| *fedavg* (baseline) | *0.808 ± 0.008* | *0.675 ± 0.054* | *352* |
+| *local* (baseline) | *0.789 ± 0.008* | *0.495 ± 0.126* | *0* |
 
 Four things worth knowing before you read further:
 
@@ -55,7 +54,7 @@ Four things worth knowing before you read further:
   [`orchestrator.py`](orchestrator.py)) — deterministic census → ε-policy → per-clinic accountant
   inversion → ConfigRecord dispatch; no LLM — that standardises the composed ε across clinic sizes.
   Measured in [`notebooks/03_dpsgd_secagg_standard.ipynb`](notebooks/03_dpsgd_secagg_standard.ipynb):
-  AUROC 0.797–0.799 holds at composed ε 0.5–8 over 5 seeds. Central and local DP remain as measured
+  AUROC 0.797–0.798 holds at composed ε 0.5–8 over 5 seeds. Central and local DP remain as measured
   comparison baselines in `privacy.py` / notebook 02.
 
 ## Quick start
@@ -164,9 +163,9 @@ Two execution modes:
 | `models/` | `logreg`, `mlp` (FedAvg) and `fedxgb` (FedXgbBagging) |
 | `models/protocols/` | The protocol benchmark, incl. `fedmosaic.py` (a Flower `Strategy` subclass) |
 | `extract_features.sql` | Canonical feature contract for the **real** Tomedo→PostgreSQL export |
-| `docs/` | `REPORT.md`, `PRIVACY.md`, `DEPLOYMENT.md`, `LEGAL-TECHNICAL-ANSWER.md` (superseded) + source PDFs |
+| `docs/` | `REPORT.md`, `PRIVACY.md`, `DEPLOYMENT.md`, the legal questions (`Law_Questions.docx`) + source PDFs |
 | `notebooks/` | Interactive federation walkthrough; `03_dpsgd_secagg_standard.ipynb` measures the DP-SGD + SecAgg + orchestrator standard live |
-| `diagrams/` | Architecture draw.io diagram of the DP-SGD + SecAgg + orchestrator standard |
+| `diagrams/` | `dpsgd_secagg_standard.drawio` (five-step rule-based-agent flow) + `Healthcare-Page-6.drawio(1).png` (multi-page architecture sheet; page 4 = the full detailed standard diagram) |
 
 ---
 

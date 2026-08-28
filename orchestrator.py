@@ -47,8 +47,13 @@ It is low-sensitivity metadata (a headcount, not a record), and the deployment r
 over the updates proper, so a census share is the weakest link in the pipeline by design. If a
 consortium contested even that, N could itself be released under a small counting-DP mechanism
 before planning — the orchestrator's arithmetic is a monotone function of N, so a noised census
-still produces a valid (slightly conservative if N is over-reported...) plan. That is a deliberate
-NON-implementation: the pilot's data-protection agreement already contemplates census exchange.
+produces a valid (conservative) plan, but ONLY when the reported N is UNDER the true
+cohort (the accountant credits LESS amplification than executed). Over-reported N
+is the unsafe direction — it inflates the sampling credit (smaller q) and loosens sigma, so the
+composed epsilon silently exceeds the certified target. `DpsgdOrchestrator.aggregate_train`
+therefore refuses any train reply whose num-examples disagrees with the census row the plan was
+computed from. The counting-DP option itself is a deliberate NON-implementation: the pilot's
+data-protection agreement already contemplates census exchange.
 
 Accounting contract (shared with dp.py — never hand-roll composition): the per-step event is
 Poisson(q) * Gaussian(sigma) with q = batch/N; per-round steps T = ceil(epochs*N/batch); total
@@ -193,10 +198,13 @@ def plan(
                 target_epsilon, total_steps, delta, q, bisection_iterations=bisection_iterations
             )
             achieved = dp.epsilon_rdp(sigma, total_steps, delta, q)
-            assert achieved is not None and achieved <= target_epsilon, (
-                f"sigma_for_epsilon returned sigma={sigma} but composed epsilon {achieved} "
-                f"exceeds target {target_epsilon}; the accountant's inversion guarantee broke"
-            )
+            if achieved is None or achieved > target_epsilon:
+                # Not an assert: `python -O` strips asserts, and this check stands between a
+                # planner defect and an over-budget plan reaching clinics (PRIVACY.md §3.5).
+                raise RuntimeError(
+                    f"sigma_for_epsilon returned sigma={sigma} but composed epsilon {achieved} "
+                    f"exceeds target {target_epsilon}; the accountant's inversion guarantee broke"
+                )
             candidate = ClinicPlan(
                 clinic=clinic,
                 n_patients=n,
@@ -218,6 +226,81 @@ def plan(
                 best = candidate
         plans.append(best)
     return plans
+
+def equity_targets(
+    sizes: dict[str, int],
+    *,
+    budget_epsilon: float,
+    gamma: float,
+) -> dict[str, float]:
+    """Census-shaped per-clinic epsilon targets at a frozen clinic-mean budget (Era 14).
+
+    epsilon_k is proportional to N_k^(-gamma), renormalised so the K-clinic MEAN of the
+    targets equals `budget_epsilon` exactly. The three regimes:
+
+    - gamma = 0: every weight is 1, so every clinic's target is `budget_epsilon` — this is
+      the deployment standard `plan()` sees today (privacy-equitable allocation).
+    - gamma > 0: smaller censuses receive LARGER targets (less noise): the utility-equity
+      direction, pricing the measured fact that standardised epsilon loads the largest sigma
+      onto the smallest practice (PRIVACY.md §3.5's sigma spreads).
+    - gamma < 0: the anti-equity twin — larger budgets to already-large clinics. Registered
+      as a control: it must not buy vulnerable-cohort utility (docs/ERAS.md K2).
+
+    The promise the allocation makes and the promise it declines: the clinic-mean budget is
+    invariant by construction (certified below with a raise, not an assert — a renorm that
+    silently drifts off budget is how DP papers get retracted), while per-clinic epsilons now
+    SPREAD — that widening is the disclosed price of the experiment, quoted in every Era-14
+    table (ERAS.md §3 'privacy semantics').
+    """
+    if budget_epsilon <= 0:
+        raise ValueError(f"budget_epsilon must be positive, got {budget_epsilon}")
+    clinics = list(sizes)
+    if not clinics:
+        raise ValueError("cannot allocate a budget over an empty census")
+    weights = {c: float(sizes[c]) ** (-gamma) for c in clinics}
+    total = sum(weights.values())
+    targets = {c: budget_epsilon * len(clinics) * weights[c] / total for c in clinics}
+    mean_target = sum(targets.values()) / len(clinics)
+    if abs(mean_target - budget_epsilon) > 1e-9 * budget_epsilon:
+        raise RuntimeError(
+            f"equity allocation drifted off budget: clinic-mean {mean_target} "
+            f"!= budget {budget_epsilon}"
+        )
+    return targets
+
+
+def plan_equity(
+    sizes: dict[str, int],
+    *,
+    budget_epsilon: float,
+    gamma: float,
+    fed_rounds: int,
+    epochs: int,
+    delta: float = dp.DELTA,
+    clip: float = dp.CLIPPING_NORM,
+    batch_grid: tuple[int, ...] = BATCH_GRID,
+) -> list[ClinicPlan]:
+    """`plan()` under census-shaped per-clinic targets — the Era-14 allocator.
+
+    Every clinic is planned by the SAME certified machinery as the standard (`plan` on the
+    single-clinic census with that clinic's own target), so each row keeps the
+    `achieved_epsilon <= target_k` guarantee and the only degree of freedom vs the deployment
+    standard is `gamma` in `equity_targets`. Rows come back in census iteration order, as
+    `plan()` promises.
+    """
+    targets = equity_targets(sizes, budget_epsilon=budget_epsilon, gamma=gamma)
+    return [
+        plan(
+            {clinic: n},
+            target_epsilon=targets[clinic],
+            fed_rounds=fed_rounds,
+            epochs=epochs,
+            delta=delta,
+            clip=clip,
+            batch_grid=batch_grid,
+        )[0]
+        for clinic, n in sizes.items()
+    ]
 
 
 def uniform_settings_audit(
@@ -360,3 +443,33 @@ class DpsgdOrchestrator(FedAvg):
             msg.content = record
             stamped.append(msg)
         return stamped
+
+    def aggregate_train(self, server_round: int, replies):
+        """FedAvg aggregation, gated on census integrity.
+
+        The plan certified `achieved_epsilon <= target` from the claimed census N; the
+        executed mechanism uses the REAL local N (see dp_sgd_local). A reply whose
+        num-examples disagrees with the census row means the account and the mechanism
+        have desynchronised (stale census after a data purge, wrong partition mapping, a
+        rogue reply) — exactly the unsafe over-report direction. Refuse rather than fold
+        it into the average. Train replies on this stack always return len(X_train), i.e.
+        the censused N exactly, so equality is the honest check.
+        """
+        reply_list = list(replies)
+        for msg in reply_list:
+            if msg.has_error():
+                continue
+            clinic = str(msg.metadata.src_node_id)
+            plan_row = self.plans.get(clinic)
+            if plan_row is None:
+                continue
+            train_records = next(iter(msg.content.metric_records.values()))
+            num_examples = int(float(train_records.get("num-examples", -1)))
+            if num_examples != plan_row.n_patients:
+                raise RuntimeError(
+                    f"DP-SGD census integrity: clinic {clinic} replied with num-examples="
+                    f"{num_examples} but the plan was certified for N={plan_row.n_patients}; "
+                    f"the composed epsilon certificate no longer describes this reply. "
+                    f"Re-run the census before restarting the federation."
+                )
+        return super().aggregate_train(server_round, reply_list)

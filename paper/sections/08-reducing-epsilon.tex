@@ -4,11 +4,21 @@
 
 \begin{shortanswer}
 The cheapest lever is the round count, and it is free. The logistic protocols are fully converged by
-round~10, but the configuration ran to \DPRounds{} and beyond; since every round composes additional
-privacy loss, halving the round count roughly halves the budget at \emph{no measured accuracy cost}.
-That change is now the default. Beyond it, the levers are more practices the pilot's
-twenty-five rather than today's \NumPractices{} and subsampling amplification, which the new
-accountant can credit but the current full-participation configuration does not earn.
+round~10, but the configuration ran to \DPRounds{} and beyond; every round composes additional privacy
+loss, so the cheap cut here is 50$\to$10 rounds: the repository's own R\'enyi
+accountant at $\sigma = 2.0$, $\delta = 10^{-5}$ prices 50 rounds at $\varepsilon = 22.0$ against
+8.1 at ten (a 2.7$\times$ reduction -- composition is sublinear, not linear) at \emph{no measured
+accuracy cost}.
+That change is now the default ($R = 10$ rounds). The second lever is now landed too: the record-level
+DP-SGD standard (\S\ref{sec:noise}) orchestrates each practice's batch size and noise multiplier
+\emph{individually}, so the smaller practices' budgets no longer overrun under a flat configuration,
+under the toy schedule at ten local epochs a
+uniform $(b, \sigma)$ delivers a composed $\varepsilon$ of 1.10 for a 50,000-patient practice and
+16.04 for a 500-patient one; on this report's ten-practice census under the deployment schedule
+(two epochs, ten rounds) the same flat instruction already spans 7.25--15.26 -- while the orchestrator contracts every
+practice to one shared target $\varepsilon^{*}$. Beyond these, the levers are more practices the
+pilot's twenty-five rather than today's \NumPractices{} and subsampling amplification, which the
+standard already earns in part through its Poisson lots.
 \end{shortanswer}
 
 \subsection{Convergence is reached long before the round budget is spent}
@@ -48,18 +58,32 @@ against deploying it at all.
 \subsection{The other levers, in order of effect}
 
 \begin{enumerate}
+  \item \textbf{Per-practice orchestration of $(b, \sigma)$ landed.} Under any flat DP-SGD
+        configuration the composed budget is an accident of practice size: identical settings of
+        batch~64 and $\sigma = 1.5$ deliver $\varepsilon = 1.10$ to a 50,000-patient practice and
+        $\varepsilon = 16.04$ to a 500-patient one (toy endpoints, ten local epochs; the
+        deployment-schedule spread across this report's ten-practice census is 7.25--15.26). The standard's rule-based server planner inverts the shared R\'enyi-DP accountant
+        per practice (\S\ref{sec:noise}), so one target $\varepsilon^{*}$ is certified for every
+        practice at $\varepsilon^{*} = 2$ the planned $\sigma$ spans 8.32--11.68, and the measured
+        utility is flat from $\varepsilon^{*} = 0.5$ to $8$. What used to be ``reduce the budget
+        where it hurts'' becomes ``choose the budget once, for everyone''.
   \item \textbf{More practices.} The budget is driven by how much population an individual can hide
         in. Twenty-five practices instead of \NumPractices{} is the pilot's own plan and is the
-        structural fix. It is unlikely to be sufficient alone.
-  \item \textbf{Subsampling amplification.} If a practice does not participate in every round, its
-        exposure is amplified away in the accountant's favour. The current configuration has every
-        practice train every round, which earns no amplification. The accountant now credits it when
-        the participation fraction is below one; the cost is slower convergence, which the round-count
-        finding above suggests there is room to absorb.
+        structural fix. Under orchestration its effect shows up directly as a smaller required
+        $\sigma$ per practice rather than as an easier target.
+  \item \textbf{Subsampling amplification.} The standard already credits amplification
+        \emph{within} each practice: its Poisson lots sample records at rate $q = b/N_k$, and the
+        accountant prices $q$ explicitly. Remaining on the table is amplification \emph{across}
+        practices if a practice does not participate in every round, its exposure is further
+        amplified away in the accountant's favour. The current configuration has every practice
+        train every round, which earns no such credit; the cost of taking it is slower convergence,
+        which the round-count finding above suggests there is room to absorb.
   \item \textbf{Accept a larger $\varepsilon$ and let secure aggregation carry the load.} Secure
         aggregation costs bandwidth and coordination, not accuracy (\S\ref{sec:secagg}). At this
         cohort size it protects the individual contribution far more cheaply than noise does, and
-        the two are complementary rather than alternatives.
+        the two are complementary rather than alternatives and they compose in one run:
+        \texttt{dpsgd-epsilon} with \texttt{secure-aggregation=true} has been executed live with
+        zero failures.
 \end{enumerate}
 
 \subsection{What the binding constraint really is}

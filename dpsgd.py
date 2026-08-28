@@ -5,10 +5,13 @@ The deployment this module implements moves the privacy boundary **inside the cl
 1. **Record-level DP-SGD** (`dp_sgd_local`): each clinic trains its logistic model with
    Poisson-sampled, per-sample-clipped, Gaussian-noised gradient steps. The protected unit is the
    *patient record*, not the clinic update: one record changes one per-sample gradient, which is
-   clipped to norm C before it can influence anything else. This is the Opacus mechanism — the
-   Abadi et al. 2016 sampled Gaussian with RDP composition — made *exact* here because logistic
-   gradients are closed form, so `per_sample_grads` vectorises every record's gradient with no
-   per-example autograd and no gradient-estimation gap.
+   clipped to norm C before it can influence anything else. Per-sample gradients are UNWEIGHTED
+   (see `per_sample_grads`): the balanced class weights the non-DP training paths use are
+   dataset-dependent, and folding them in would make one record change every record's clipped
+   term — silently voiding the sensitivity-C account the accountant composes. This is the Opacus
+   mechanism — the Abadi et al. 2016 sampled Gaussian with RDP composition — made *exact* here
+   because logistic gradients are closed form, so `per_sample_grads` vectorises every record's
+   gradient with no per-example autograd and no gradient-estimation gap.
 2. **Secure Aggregation on the channel** (`run_standard`): the server receives only the masked
    *sum* of clinic updates, never an individual one. The in-process runner cannot do real
    cryptography, so it enforces the same information boundary instead: updates go straight into
@@ -63,14 +66,19 @@ logging.getLogger("flwr").setLevel(logging.ERROR)
 
 
 def per_sample_grads(loc: LogRegLocal, w: np.ndarray) -> np.ndarray:
-    """Every record's weighted logistic gradient `(p_i - y_i) * sw_i * [x_i, 1]`, shape (N, d+1).
+    """Every record's UNWEIGHTED logistic gradient `(p_i - y_i) * [x_i, 1]`, shape (N, d+1).
 
-    The balanced class weight `sw_i` is folded in BEFORE clipping: it is part of the record's own
-    influence, so what the clip norm C bounds is the full weighted per-record contribution to the
-    step — a minority-class record clipped after weighting cannot dominate through its larger sw_i.
+    Deliberately unweighted inside the privacy-charged mechanism: `LogRegLocal.sw` is
+    dataset-dependent (`n / (2 * n_class)`) — adding or removing one record changes every record's
+    `sw`, so an add/remove-one-record neighbour would move ALL N clipped terms, not one, and the
+    accountant's 'one record alters one clipped gradient (norm ≤ C)' premise quietly becomes
+    false. DP-SGD therefore charges the plain per-record logistic gradient; clip at C then bounds
+    a record's total influence on the noised sum *exactly*. If class reweighting is ever wanted
+    back under DP it must use dataset-independent constants (e.g. a fixed prior), never the local
+    label counts — and it must be re-accounted.
     """
     Xb = np.column_stack([loc.X, np.ones(len(loc.X))])
-    residual = (predict_proba(loc.X, w) - loc.y) * loc.sw
+    residual = predict_proba(loc.X, w) - loc.y
     return residual[:, None] * Xb
 
 
@@ -104,7 +112,9 @@ def dp_sgd_local(
     at all (a σ=0 reference row must not drift when neighbouring cells change).
 
     Number of steps is `ceil(epochs * N / batch_size)` — the same T the orchestrator accounts with
-    (`dp.sigma_for_epsilon(target, T, delta, q)`), so the plan's budget is the executed budget.
+    (`dp.sigma_for_epsilon(target, T, delta, q)`). The accountant therefore OVER-COVERS the
+    executed spend: empty Poisson lots are skipped with no noise draw, so the executed budget is
+    at or below the planned one — the safe direction, and the guarantee sentence stays clean.
     """
     w = np.asarray(w, dtype=np.float64).copy()
     N = loc.num_examples
@@ -139,7 +149,9 @@ def _round_seed(seed: int, clinic: int, rnd: int) -> int:
     return (seed * 1_000_003 + clinic * 9_973 + rnd * 91_193) % (2**32)
 
 
-def run_standard(locals_: list, plans: list, *, rounds: int, lr: float, seed: int) -> list[dict]:
+def run_standard(locals_: list, plans: list, *, rounds: int, lr: float, seed: int,
+    keep_final_model: bool = False,
+):
     """One federated run under the orchestrator's per-clinic DP plans; returns the metric history.
 
     `plans[k]` is duck-typed (attributes `batch_size`, `sigma`, `clip`, `local_epochs`) and is
@@ -156,6 +168,10 @@ def run_standard(locals_: list, plans: list, *, rounds: int, lr: float, seed: in
     the weighted sum — and nothing more.) The new global model is then evaluated per clinic and
     passed through `aggregate_evaluate`, yielding the same per-round dict shape `privacy.py`'s
     sweeps produce.
+    `keep_final_model=True` additionally returns the final global weights, letting a caller
+    score per-clinic metrics that the aggregate history collapses (Era 14's pre-specified
+    vulnerable-cohort estimator in equity.py needs per-clinic finals; the default call shape
+    is unchanged).
     """
     strategy = FedAvg(evaluate_metrics_aggr_fn=weighted_and_worst)
     w = init_weights(locals_[0].n_features)
@@ -193,8 +209,9 @@ def run_standard(locals_: list, plans: list, *, rounds: int, lr: float, seed: in
         with hushed():
             agg = strategy.aggregate_evaluate(rnd, eval_replies)
         history.append(dict(agg) if agg else {})
+    if keep_final_model:
+        return history, w
     return history
-
 
 def prepare_practices(frames, seed: int) -> list[LogRegLocal]:
     """The public twin of `privacy._prepare`: split, scale on train only, wrap in LogRegLocal."""

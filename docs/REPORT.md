@@ -52,11 +52,11 @@ on every practice's data together, which reality does not permit — is **0.861*
 | | AUROC | Worst practice | Sensitivity | Uplink bits/round |
 |---|---|---|---|---|
 | *centralized ceiling* | *0.861* | *n/a* | *0.808* | *n/a* |
-| **FedProx** | **0.808 ± 0.009** | **0.675 ± 0.060** | 0.703 | 352 |
-| **FedMosaic** | 0.800 ± 0.011 | 0.661 ± 0.076 | 0.709 | 3,600 |
-| **FedXgbBagging** | 0.729 ± 0.021 | 0.555 ± 0.050 | 0.599 | 20,902 |
-| *fedavg* (baseline) | *0.808 ± 0.009* | *0.675 ± 0.061* | *0.702* | *352* |
-| *local* (baseline) | *0.789 ± 0.009* | *0.495 ± 0.141* | *0.699* | *0* |
+| **FedProx** | **0.808 ± 0.008** | **0.675 ± 0.054** | 0.703 | 352 |
+| **FedMosaic** | 0.800 ± 0.010 | 0.661 ± 0.068 | 0.709 | 3,600 |
+| **FedXgbBagging** | 0.729 ± 0.019 | 0.555 ± 0.045 | 0.599 | 21,521 |
+| *fedavg* (baseline) | *0.808 ± 0.008* | *0.675 ± 0.054* | *0.702* | *352* |
+| *local* (baseline) | *0.789 ± 0.008* | *0.495 ± 0.126* | *0.699* | *0* |
 
 The ceiling has no worst-practice figure by construction: pooling destroys the practice boundary the
 measure is defined over. It is the accuracy target, not a fairness comparator.
@@ -83,7 +83,7 @@ seeds that reverses, and worst-practice variance is wide enough (± 0.06–0.14)
 protocol rankings should not be trusted.
 
 **5. XGBoost federates badly, and the failure is federation-specific.** Its pooled ceiling is 0.860 —
-indistinguishable from logistic regression's 0.861 — but bagging reaches only 0.729, at 59× the
+indistinguishable from logistic regression's 0.861 — but bagging reaches only 0.729, at 61× the
 bandwidth.
 
 ### More rounds do not help — and hurt the tree path
@@ -104,7 +104,9 @@ FedXgbBagging appends every practice's new trees to one ensemble each round, and
 those trees encode contradictory local rules, so more rounds means more contradiction.
 
 This has a direct privacy consequence: **cutting the round count from 50 to 10 costs no accuracy and
-cuts the DP budget five-fold.** It is the cheapest ε improvement available (§3).
+cuts the composed DP budget about 2.7×** (the repo's own RDP accountant at σ = 2.0: ε 22.0 → 8.1 —
+sublinear, since RDP composition grows slower than the round count once the per-round budget is
+already large). It is the cheapest ε improvement available (§3).
 
 ### Negative control
 
@@ -136,7 +138,7 @@ rounds, **5 seeds** (mean ± std). ε from an **RDP accountant** (`dp-accounting
 | 0.00 | **0.808 ± 0.008** | 0.675 ± 0.054 | — | — |
 | 0.10 | 0.808 ± 0.007 | 0.676 ± 0.056 | 1211.8 | −0.000 |
 | 0.25 | 0.807 ± 0.008 | 0.669 ± 0.054 | 244.0 | −0.001 |
-| 0.50 | 0.803 ± 0.011 | 0.681 ± 0.033 | 81.1 | −0.005 |
+| 0.50 | 0.803 ± 0.011 | 0.681 ± 0.033 | 81.1 | −0.004 |
 | 1.00 | 0.794 ± 0.014 | 0.646 ± 0.061 | 30.1 | −0.014 |
 | 2.00 | 0.773 ± 0.017 | 0.608 ± 0.097 | **12.3** | −0.035 |
 
@@ -205,7 +207,8 @@ This is one of the three attack families EDPB Opinion 28/2024 names, on syntheti
 > [notebooks/03](../notebooks/03_dpsgd_secagg_standard.ipynb)): **record-level DP-SGD inside each
 > clinic + SecAgg+ on the wire + a rule-based server agent** that plans per-clinic (batch, σ) so
 > every clinic composes to the same target ε. At ε = 2–8 the ten-practice run holds **0.797–0.798
-> AUROC / 0.64–0.65 worst practice** — inside seed noise of its own no-DP runner row — against
+> AUROC / 0.65–0.66 worst practice** — inside seed noise of its own no-DP runner row (0.796 /
+0.659, the per-sample-clipping bias of this training path) — against
 > local DP's collapse (0.627 / 0.397 at ε ≈ 4.3), and the live SecAgg+ path is verified with 12
 > practices and 0 failures. The §3 caveats remain the honest history of *why* the standard is what
 > it is.
@@ -215,7 +218,7 @@ This is one of the three attack families EDPB Opinion 28/2024 names, on syntheti
 ## 4. Recommendation
 
 **Deploy logistic regression, not XGBoost.** Equal pooled ceiling (0.861 against 0.860), far better
-federated accuracy (0.808 against 0.729), 59× less bandwidth, it degrades rather than improves with
+federated accuracy (0.808 against 0.729), 61× less bandwidth, it degrades rather than improves with
 more rounds, and it is the only one of the two secure aggregation can protect. It is also the model
 named in grant task T2.2.
 
@@ -243,8 +246,7 @@ round spends differential-privacy budget for no accuracy.
 | Synthetic label is prevalence, real label is incidence | `ckd_stage3plus` vs `ckd_incident` are different prediction tasks (CLAUDE.md §3b) |
 | 10 practices, not 25 | Understates what the funded pilot can achieve, especially for the DP budget |
 | Fairness audited by age band, not sex | The Antrag specifies sex; `geschlecht` exists only in the real schema |
-�
-limination-stale-note|
+| Inversion/reconstruction attack audits still open | Membership inference is now tested and clean (PRIVACY.md §5); the other two EDPB attack families (inversion, reconstruction) remain unaudited, on synthetic data |
 | FedMosaic's own DP mechanisms unimplemented | Its privacy claim currently rests on payload shape alone |
 | DP measured on FedAvg only | FedProx and FedMosaic DP costs unmeasured |
 | Worst-practice AUROC has high seed variance | ± 0.06–0.14 across seeds. Single-seed protocol rankings are unreliable — an earlier single-seed run put FedMosaic first, which five seeds reverse |

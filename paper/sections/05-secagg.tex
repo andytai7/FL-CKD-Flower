@@ -5,8 +5,11 @@
 \begin{shortanswer}
 It is reachable, and it is now implemented and verified end-to-end: with
 \texttt{secure-aggregation} enabled, a full round of training and evaluation completes across twelve
-practices and the server obtains only the sum. Three limits must travel with any claim made about
-it. The guarantee is \textbf{semi-honest} it protects against a server that follows the protocol
+practices and the server obtains only the sum. It also composes with the record-level DP-SGD standard
+of \S\ref{sec:noise}: a live run of \texttt{dpsgd-epsilon} \emph{together with}
+\texttt{secure-aggregation=true} drove the census round, the plan dispatch and all planned rounds over
+the masked rails and completed 12/12 results with zero practice failures. Three limits must travel
+with any claim made about it. The guarantee is \textbf{semi-honest} it protects against a server that follows the protocol
 and inspects what it receives, not against one that deviates. \textbf{Participation stays visible}:
 the server always learns who took part. And \textbf{the aggregate is still model parameters}, so
 secure aggregation does not by itself make the released model anonymous.
@@ -39,9 +42,14 @@ of practices that would have to collude \emph{with} the server to unmask an indi
 
 In Flower \FlwrVersion{}, secure aggregation ships only in the \emph{legacy} namespaces: the client
 modifier is absent from the current message-API namespace, and the workflow that drives it demands a
-legacy context. It therefore cannot compose with the strategy entry point this project's server
-otherwise uses. It \emph{is} reachable by driving the legacy workflow from inside the modern server
-application, and that is what is now built.
+legacy context. The composition problem this used to pose is resolved: the DP-SGD standard's server
+agent drives the legacy SecAgg+ workflow from inside the modern server application, so the
+orchestrated census round, the per-practice plan dispatch and the planned training rounds all travel
+over the masked rails verified live with zero failures, as above. Two combinations remain excluded
+by construction, and the run configuration enforces both: \texttt{central-dp-epsilon} with
+\texttt{secure-aggregation} (server-side noise over an opaque sum would be meaningless), and
+\texttt{dpsgd-epsilon} with either \texttt{central-dp-epsilon} or \texttt{local-dp-epsilon} (one
+noise mechanism per run).
 
 Two implementation notes, recorded because they are the kind of detail that is expensive to
 rediscover:

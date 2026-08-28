@@ -19,11 +19,13 @@ scaled by $\sigma C$ is then added. $\delta = 10^{-5}$ is chosen below $1/n$ for
 \NumPatients{} patients, per the usual convention \cite{dwork2014dp}.
 
 Composing that over \DPRounds{} rounds is where the accounting choice bites. We use the R\'enyi-DP
-accountant \cite{mironov2017rdp} as implemented in Google's \texttt{dp\_accounting}
-\cite{dpaccounting}: it tracks the full R\'enyi divergence curve across rounds and converts to
-$(\varepsilon, \delta)$ once at the end, rather than paying a union bound every round. We use an
-independently maintained, widely reviewed implementation deliberately it is more defensible to a
-data-protection reviewer than arithmetic of our own.
+accountant \cite{mironov2017rdp} as implemented in Google's \texttt{dp\_accounting} \cite{dpaccounting}: it tracks the full R\'enyi divergence curve across
+rounds and converts to $(\varepsilon, \delta)$ once at the end, rather than paying a union bound
+every round. We use an independently maintained, widely reviewed implementation deliberately
+it is more defensible to a data-protection reviewer than arithmetic of our own. The deployment
+standard (\S\ref{sec:noise}) reuses this same accountant in \emph{reverse}: given a target
+$\varepsilon^{*}$, it is inverted per practice for the smallest noise multiplier that certifies
+the target under that practice's sampling rate and step count.
 
 \begin{table}[htbp]
   \centering

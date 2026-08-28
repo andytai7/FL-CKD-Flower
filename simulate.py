@@ -118,7 +118,7 @@ def _run_fedavg(frames: list, num_rounds: int, quiet: bool, config: dict) -> lis
         replies = []
         for client in clients:
             params, n = client.fit(ndarrays)
-            replies.append(train_reply(params, n, **{"partition-id": float(client.partition_id)}))
+            replies.append(train_reply(params, n))
         with hushed():
             arrays, _ = strategy.aggregate_train(rnd, replies)
         ndarrays = arrays.to_numpy_ndarrays()
@@ -164,9 +164,8 @@ def _run_fedxgb(frames: list, num_rounds: int, quiet: bool, config: dict) -> lis
             train_reply(
                 [np.frombuffer(trees, dtype=np.uint8)],
                 pr.num_examples,
-                **{"partition-id": float(pid)},
             )
-            for pid, (pr, trees) in enumerate(zip(practices, local_trees))
+            for pr, trees in zip(practices, local_trees)
         ]
         # FedXgbBagging tracks the ensemble it last broadcast in `current_bst`, which it normally
         # sets inside configure_train (the Grid path we bypass here). Seed it with the same value
@@ -306,7 +305,7 @@ def main() -> None:
     parser.add_argument("--quiet", action="store_true", help="hide per-client metric lines")
     parser.add_argument(
         "--metric-privacy", action="store_true",
-        help="privacy layer L5: report per-practice metrics anonymously (see CLAUDE.md §9)",
+        help="privacy layer L5: report per-practice metrics anonymously (see docs/PRIVACY.md §1)",
     )
     parser.add_argument(
         "--min-cohort-size", type=int, default=0,

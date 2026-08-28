@@ -30,6 +30,13 @@ document cannot drift from the data it describes. If you need a number that has 
 grep -nE '[0-9]\.[0-9]{2,}' sections/*.tex     # should match only layout and formula constants
 ```
 
+There is one sanctioned exception: the deployment-standard results (record-level DP-SGD + SecAgg+ +
+per-practice ε orchestration) are measured in `notebooks/03_dpsgd_secagg_standard.ipynb`, outside
+this pipeline's cache. Those figures are quoted verbatim in the prose and in
+`tables/dpsgd_standard.tex`, which is **hand-authored on purpose** and survives
+`make_paper.py --render-only` (the renderer never deletes or overwrites it). Anything the grep check
+catches around "the deployment standard" belongs to that exception; treat other hits as drift.
+
 ## Building
 
 ### Overleaf

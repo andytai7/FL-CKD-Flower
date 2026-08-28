@@ -6,10 +6,15 @@
 This is the single most important technical distinction in this report. \textbf{Central DP does not
 answer the central question.} Its noise is applied by the server \emph{as it aggregates}, so the
 server necessarily receives every practice's un-noised update first; it constrains what can be
-inferred from the published model, not what the aggregating party sees. Only \textbf{local DP}
-noise added inside the practice's own SuperNode, before transmission changes that, and it is now
-implemented and measured. It is expensive: at a genuinely meaningful budget the worst practice falls
-to \LocalWorstOne{}, below the \LocalWorst{} it achieves by not collaborating at all.
+inferred from the published model, not what the aggregating party sees. What changes that is noise
+added \textbf{inside the practice's own SuperNode, before transmission}. The update-level local DP
+we first measured is unusable at a defensible budget (worst practice \LocalWorstOne{} at composed
+$\varepsilon \approx \LocalEpsOne{}$, below the \LocalWorst{} it scores by not collaborating at
+all). The deployment standard now delivers the workable form: \textbf{record-level DP-SGD inside
+each practice}, with a rule-based server planner setting each practice's batch size and noise
+multiplier so every practice composes to one shared target $\varepsilon^{*}$. The measured utility
+is flat from $\varepsilon^{*} = 0.5$ to $8$ (Table~\ref{tab:dpsgdstandard}); it composes with
+secure aggregation (\S\ref{sec:secagg}).
 \end{shortanswer}
 
 \subsection{Three placements, two of which change what the server receives}
@@ -22,11 +27,12 @@ to \LocalWorstOne{}, below the \LocalWorst{} it achieves by not collaborating at
     Mechanism & Where the noise is applied & Server still sees the individual update? & Status \\
     \midrule
     Central DP & Server, \emph{during} aggregation & \textbf{Yes un-noised} & measured \\
-    Local DP & \textbf{Inside the SuperNode, before transmission} & \textbf{No noised at source} & measured \\
+    Local DP (update-level) & Inside the SuperNode, before transmission & No noised at source & measured \\
+    \textbf{Record-level DP-SGD (standard)} & \textbf{Inside the SuperNode, per patient record, before transmission} & \textbf{No per-record gradients clipped and noised at source} & \textbf{measured} \\
     Secure aggregation & Cryptographic masking across practices & No only the sum & implemented \\
     \bottomrule
   \end{tabular}
-  \caption{Only the second and third change what the aggregating party receives. This distinction is
+  \caption{Only the in-practice rows change what the aggregating party receives. This distinction is
   easy to lose and it is the crux of the assessment's central question.}
   \label{tab:placements}
 \end{table}
@@ -46,11 +52,11 @@ $\sigma = \text{sensitivity} \cdot \sqrt{2\ln(1.25/\delta)}\,/\,\varepsilon$
 inside the SuperNode. It is parameterised by $(\varepsilon, \delta)$ directly rather than by a raw
 noise scale.
 
-\subsection{What local DP costs, measured}
+\subsection{What update-level local DP costs, measured}
 
 \begin{table}[htbp]
   \centering
-  \caption{Local DP: noise added inside the SuperNode. $\varepsilon$ is the modifier's own per-round
+  \caption{Update-level local DP: noise added inside the SuperNode. $\varepsilon$ is the modifier's own per-round
   parameter; the composed column is the budget over \DPRounds{} rounds from the same accountant used
   in \S\ref{sec:budget}. \NumSeeds{} seeds, mean $\pm$ s.d.}
   \input{tables/dp_local}
@@ -61,7 +67,10 @@ noise scale.
   \centering
   \includegraphics[width=\textwidth]{dp_tradeoff}
   \caption{Utility against budget, both mechanisms on one scale. Stronger privacy is to the right.
-  The gap between the curves is the price of the server never holding an individual update.}
+  The gap between the curves is the price of the server never holding an individual update if the
+  protected unit stays the practice's whole update. Record-level DP-SGD
+  (Table~\ref{tab:dpsgdstandard}) closes most of that gap by moving the protected unit to the patient
+  record; it is not drawn here because its noise enters during training, not on a released update.}
   \label{fig:dp}
 \end{figure}
 
@@ -76,18 +85,72 @@ The reason is structural, not incidental. Under local DP each of the \NumPractic
 rather than being added once. Averaging reduces it, but only as $1/\sqrt{n}$ against a noise budget
 that each practice must satisfy alone.
 
-\subsection{The finding the consortium needs to act on}
+\subsection{The resolution: record-level DP-SGD inside the practice}
 
-At $\varepsilon \approx \LocalEpsOne{}$ the first genuinely defensible budget in either table
-local DP takes global AUROC to \LocalAUCOne{} and the worst practice to \LocalWorstOne{}. A practice that trains entirely alone
-reaches \LocalWorst{}. \textbf{At this cohort size, local DP at a meaningful budget produces a model
-worse than not collaborating}, which would defeat the project's premise.
+The update-level finding stands and is worth stating plainly: at $\varepsilon \approx \LocalEpsOne{}$
+update-level local DP takes global AUROC to \LocalAUCOne{} and the worst practice to
+\LocalWorstOne{}, while a practice that trains entirely alone reaches \LocalWorst{}. \textbf{At
+this cohort size, update-level local DP at a meaningful budget produces a model worse than not
+collaborating.} The failure is of that mechanism, not of noise-at-the-practice itself, and the
+deployment standard now shows the difference: move the protected unit from the practice's
+\emph{update} to the patient \emph{record}.
 
-This is a finding, not a failure of the implementation: the mechanism works, and what it reveals is
-that ten practices totalling \NumPatients{} patients is too little population to hide an individual
-in. The lever is cohort size the funded pilot's twenty-five practices and it should be
-surfaced now rather than at Milestone~4. Secure aggregation, whose cost is bandwidth and coordination
-rather than accuracy, carries much more of the load at this scale.
+The standard is record-level DP-SGD \cite{abadi2016dpsgd} trained inside each practice's SuperNode.
+Every record contributes its own (unweighted)
+logistic gradient $(p_i - y_i)\,[x_i, 1]$, clipped to norm $C = 1.0$; Gaussian
+noise scaled by $\sigma C$ is added once to the clipped lot sum; optimisation proceeds on
+Poisson-sampled lots of size $b$ drawn from the practice's census $N$ (sampling rate $q = b/N$).
+The accounted event chain is therefore the sampled Gaussian mechanism, composed with the same
+R\'enyi-DP accountant as \S\ref{sec:budget} \cite{mironov2017rdp,dpaccounting} so small and
+large practices spend budget in identical units.
+% deliberate change (2026-08-27 audit): the privacy-charged mechanism does NOT fold balanced
+% class weights into the per-record gradient -- they are computed from local label counts, so
+% one added/removed record would change every record's weight and push add/remove-one-record
+% sensitivity past one clipped term. Class-balanced weighting stays on the non-DP paths.
+
+One consequence is invisible until measured: a \emph{uniform} $(b, \sigma)$ configuration does not
+deliver a uniform budget. At batch~64, $\sigma = 1.5$, ten local epochs and ten rounds the composed
+$\varepsilon$ is 1.10 for a 50,000-patient practice but 16.04 for a 500-patient one
+(\texttt{orchestrator.uniform\_settings\_audit}); under this report's deployment schedule (two local epochs, ten
+rounds) the same flat instruction delivers $\varepsilon = 7.25$ at the cohort's largest practice
+and 15.26 at its smallest (the 1.10/16.04 pair is a toy schedule at ten local epochs with
+50,000- and 500-patient endpoints, kept to expose the mechanism's size dependence). The large practices are over-protected and the small ones under-protected, and nobody
+knows which budget they personally trained under. The standard therefore pairs DP-SGD with a
+\textbf{rule-based server-side planner} (a rule table, not a model; no LLM anywhere): R1~reads each
+practice's census $N$, the only datum exchanged; R2~fixes one global $(\varepsilon^{*},\,
+\delta = 10^{-5})$ policy for the run; R3~inverts the shared accountant per practice for the batch
+size and the smallest $\sigma$ whose composed budget stays at or below $\varepsilon^{*}$; R4~dispatches
+each practice's plan ($b$, $\sigma$, $C$, local epochs) as run configuration. Every planned practice
+is re-verified against the target before dispatch at $\varepsilon^{*} = 2$ the planned $\sigma$
+spans 8.32--11.68 across the ten practices, smallest census carrying the largest noise, and every
+practice certifies $\varepsilon \le 2.0$.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The deployment standard, measured: record-level DP-SGD inside each practice with
+  per-practice $(b, \sigma)$ orchestrated to one target $\varepsilon^{*}$. \NumPractices{} synthetic
+  practices, \NumSeeds{} seeds, $R = 10$ rounds, 2 local epochs, $\delta = 10^{-5}$; mean $\pm$ s.d.
+  Computed in \texttt{notebooks/03\_dpsgd\_secagg\_standard.ipynb} \S5, quoted verbatim (not from
+  this report's macro cache). The no-DP row re-runs the same DP-SGD runner with $\sigma = 0$; the
+  published no-DP FedAvg figure (\BestFedAUC{} / \BestFedWorst{}, \S\ref{sec:works}) used the
+  full-batch 20-round path and sits about 0.01 higher a per-sample-clipping path difference, present
+  at every budget including none, documented in the notebook.}
+  \input{tables/dpsgd_standard}
+  \label{tab:dpsgdstandard}
+\end{table}
+
+Utility is flat: $\varepsilon^{*} = 0.5$ already matches the same-runner no-DP row on both columns,
+and $\varepsilon^{*} = 8$ is statistically indistinguishable from it. Against the anchors, that
+row (0.797 / 0.649 at $\varepsilon^{*} = 2$) beats central DP at comparable-defensibility settings
+(\AUCAtSigmaTwo{} / \WorstAtSigmaTwo{} at composed $\varepsilon \approx \EpsAtSigmaTwo$,
+\S\ref{sec:budget}) while also
+answering the question central DP cannot, and it replaces update-level local DP's
+\LocalAUCOne{} / \LocalWorstOne{} at
+$\varepsilon \approx \LocalEpsOne{}$ a setting below the do-nothing floor of training alone. The
+small-cohort problem this section opened with is not abolished (the planned $\sigma$ above shows the
+smallest practices still paying for their size), but it is relocated from ``is privacy reachable at
+all'' to ``which $\varepsilon^{*}$ is the policy choice''; \S\ref{sec:reduce} takes that up, and the
+combination with secure aggregation (\S\ref{sec:secagg}) has been verified live.
 
 \begin{sidenote}{Not yet implemented}
 FedMosaic specifies its own per-round DP construction an XOR mechanism on the label matrix and

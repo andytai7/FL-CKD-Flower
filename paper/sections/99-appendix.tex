@@ -57,6 +57,9 @@ it.
   Key & Value & What it does \\
   \midrule
   \texttt{num-server-rounds} & 10 & Federation rounds. Reduced from 20 see \S\ref{sec:reduce} \\
+  \texttt{num-practices} & 12 & Simulated SuperNodes (must equal \texttt{options.num-supernodes}) \\
+  \texttt{alpha} & 0.5 & Dirichlet non-IID concentration for the synthetic split \\
+  \texttt{iid} & false & Even-split ablation switch \\
   \texttt{fraction-fit} & 1.0 & Fraction of practices training per round \\
   \texttt{local-epochs} & 2 & Local passes per round \\
   \texttt{model} & \texttt{logreg} & Logistic regression (\S\ref{sec:modelchoice}) \\
@@ -66,7 +69,13 @@ it.
   \midrule
   \texttt{metric-privacy} & \textbf{true} & Anonymise per-practice metric lines (\S\ref{sec:sidechannels}) \\
   \texttt{min-cohort-size} & \textbf{20} & Suppress lines below this cohort floor \\
-  \texttt{local-dp-epsilon} & 0.0 & Noise inside the SuperNode; 0 = off (\S\ref{sec:noise}) \\
+  \texttt{min-train-examples} & 0 & Participation floor (0 = off in the research baseline) \\
+  \texttt{central-dp-epsilon} & 0.0 & Server-side noise at aggregation; 0 = off (\S\ref{sec:budget}) \\
+  \texttt{central-dp-delta} & 1e-5 & $\delta$ for the central-DP accountant inversion \\
+  \texttt{local-dp-epsilon} & 0.0 & Update-level noise inside the SuperNode; 0 = off (\S\ref{sec:noise}) \\
+  \texttt{dpsgd-epsilon} & 0.0 & Record-level DP-SGD target $\varepsilon^{*}$; 0 = off. Activates the
+        orchestrated standard: the server planner issues per-practice \texttt{batch-size} and
+        \texttt{noise-multiplier} from the census (\S\ref{sec:noise}, \S\ref{sec:reduce}) \\
   \texttt{secure-aggregation} & false & SecAgg+ masking (\S\ref{sec:secagg}) \\
   \texttt{secagg-num-shares} & 3 & Shamir shares issued per practice \\
   \texttt{secagg-reconstruction-threshold} & 2 & Shares needed to recover a dropped mask \\
@@ -75,7 +84,14 @@ it.
 \end{center}
 
 Differential privacy parameters not in the run config: clipping norm $C = 1.0$, $\delta = 10^{-5}$
-(chosen below $1/n$), accountant R\'enyi-DP via \texttt{dp\_accounting} \cite{dpaccounting}.
+(chosen below $1/n$), accountant R\'enyi-DP via \texttt{dp\_accounting} \cite{dpaccounting}. The
+DP-key relations enforced in \texttt{server\_app.main}: \texttt{dpsgd-epsilon} rejects
+both \texttt{central-dp-epsilon} and \texttt{local-dp-epsilon} (the record-level budget would be
+spent twice), and \texttt{central-dp-epsilon} rejects \texttt{secure-aggregation} (masking arrives
+before central DP's server-side noising reads the updates). The remaining pair
+(\texttt{central-dp-epsilon} + \texttt{local-dp-epsilon}) is allowed: stacked noise only
+over-protects at a utility cost, never over-spends budget. \texttt{dpsgd-epsilon} \emph{with}
+\texttt{secure-aggregation} is the standard's own combination and is verified live.
 
 \subsection{SuperLink capability surface}
 

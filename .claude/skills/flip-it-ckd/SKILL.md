@@ -56,6 +56,7 @@ PyTorch project.
 | Full benchmark | `uv run ckd-benchmark --rounds 20` |
 | Privacy sweep | `uv run ckd-privacy --seeds 42 43 44 45 46` |
 | Real Flower stack | `uv run flwr run .` |
+| DP-SGD + SecAgg standard, live | `uv run flwr run . --run-config "dpsgd-epsilon=8.0 alpha=5.0 secure-aggregation=true"` (α=5.0 keeps sim partitions above the census floor) |
 | Lint | `uv run ruff check .` |
 
 Wrong → right:
@@ -70,6 +71,13 @@ Wrong → right:
 - `build_client_from_frame()` in `client_app.py` — the **only** client constructor. Handles local split + local scaler + model build.
 - `messages.py` — the only definition of the Flower `Message` shapes. Don't rebuild them inline.
 - `weighted_and_worst` in `server_app.py` — the dual-level aggregator. Every strategy takes it.
+- `dp.py` — the **only** DP accountant definition (`epsilon_rdp`, `sigma_for_epsilon` = RDP via
+  Google `dp_accounting`), shared by sweeps, audit, and the live server. Never compose by hand.
+- `dpsgd.py` — the record-level DP-SGD trainer + in-process runner (`run_standard`, `run_epsilon_sweep`).
+- `orchestrator.py` — the **rule-based server agent** (no LLM): `AGENT_RULES` is the cited rule table;
+  `plan()`/`DpsgdOrchestrator` decide per-clinic (batch, σ). Extend planning here, never beside it.
+- `diagrams/` — the standard's diagrams; the PNG embeds its drawio source — edit/update the XML,
+  and re-export the raster in draw.io (no renderer in this repo).
 - `models/protocols/common.py` — explicit logistic regression for protocols needing gradient control (FedProx's proximal term, FedMosaic's weighted objective).
 - Datasets live in `data/`; generated `data/clinics/` and `results/` are gitignored.
 
@@ -95,7 +103,7 @@ Standing prohibitions:
 - Never add `patientid` (or any identifier) to a feature frame.
 - Never log a **named** practice's metrics below the cohort floor — use `--metric-privacy` / `--min-cohort-size`.
 - Never pool practice data outside `centralized.py`.
-- Never claim a DP ε from `privacy._epsilon()` as a formal budget — it's a loose basic-composition upper bound, flagged as such.
+- Never type a DP ε derived from hand arithmetic into docs or reports — the accountant is `dp.py` (`epsilon_rdp`/`sigma_for_epsilon`), and only a **composed** budget over the configured rounds may be quoted (δ = 1e-5).
 
 Two constraints to state rather than paper over: **SecAgg+ cannot protect `FedXgbBagging`** (trees
 carry patient-derived split thresholds; there is no vector to mask), and **SecAgg+ is legacy-path
@@ -112,6 +120,7 @@ only in flwr 1.33** — it needs `LegacyContext` and cannot compose with `strate
 | `SGDClassifier` dtype error | float32/float64 mismatch | Keep `coef_`/`X` float64; exchange float32 |
 | Centralized ceiling ≈ 0.5 while federated ≈ 0.8 | `ckd-baseline` defaulted to the flat CSV | Add `--clinics` |
 | All protocols look identical | Run too short, or the flat dataset | Use `--clinics`, ≥20 rounds |
+| `ValueError: ... below the smallest candidate batch 8` | Simulation partition under the DP-SGD census floor | The orchestrator correctly refuses unsafe plans — raise `alpha` (5.0) or shrink `num-practices` |
 
 ## 8. Reporting standards
 

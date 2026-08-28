@@ -81,10 +81,10 @@
         <mxCell id="25" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;div&gt;Send SecAgg + DP-SGD Weights to the server&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
           <mxGeometry height="30" width="60" x="440" y="910" as="geometry" />
         </mxCell>
-        <mxCell id="26" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Step 4" vertex="1">
+        <mxCell id="26" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Stage 4" vertex="1">
           <mxGeometry height="30" width="60" x="380" y="900" as="geometry" />
         </mxCell>
-        <mxCell id="27" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Step 5" vertex="1">
+        <mxCell id="27" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Stage 5" vertex="1">
           <mxGeometry height="30" width="60" x="550" y="900" as="geometry" />
         </mxCell>
         <mxCell id="28" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Final model sent to clinics" vertex="1">

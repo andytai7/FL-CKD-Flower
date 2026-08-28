@@ -5,6 +5,19 @@ FLIP-IT. Currently FL-CKD-Flower is run on \NumPractices{} synthetic practices t
 two apart, and \S\ref{sec:realdata} states explicitly which conclusions survive the move to real
 practice data and which do not.
 
+\paragraph{The deployment standard.} Since the privacy sections were first drafted, the privacy
+position has hardened into a built and measured \textbf{deployment standard}: \emph{record-level
+DP-SGD inside each practice} (per-record gradient clipping, Gaussian noise on Poisson-sampled lots),
+\emph{secure aggregation on the wire}, and a \emph{rule-based server agent} (a deterministic rule
+table, not an LLM) that sets each practice's batch size and noise multiplier so every practice
+composes to one shared target $\varepsilon^{*}$. Measured on the synthetic cohort
+(\texttt{notebooks/03\_dpsgd\_secagg\_standard.ipynb}): utility is flat from
+$\varepsilon^{*} = 0.5$ to $8$ at $\varepsilon^{*} = 2$, global AUROC $0.797 \pm 0.011$ and
+worst-practice $0.649 \pm 0.060$, against update-level local DP's \LocalAUCOne{} /
+\LocalWorstOne{} at composed
+$\varepsilon \approx \LocalEpsOne{}$ and verified live end-to-end, including over the masked SecAgg+ rails,
+with zero failures. \S\ref{sec:noise}, \S\ref{sec:reduce} and \S\ref{sec:recs} carry the detail.
+
 \subsection*{Answers at a glance}
 
 \begin{longtable}{p{0.36\textwidth}p{0.44\textwidth}p{0.12\textwidth}}
@@ -21,11 +34,14 @@ Does Flower Labs receive anything? (\S\ref{sec:flowerlabs})
   & Method \\
 \addlinespace
 Is secure aggregation reachable? (\S\ref{sec:secagg})
-  & Yes, and it is now built and verified. Semi-honest threat model; participation stays visible.
+  & Yes, and it is now built and verified and composes with the DP-SGD standard in one live
+    run. Semi-honest threat model; participation stays visible.
   & Method \\
 \addlinespace
 Where can noise be added, and what does each placement protect? (\S\ref{sec:noise})
   & Central DP constrains the published model but leaves the server seeing un-noised updates.
+    Record-level DP-SGD inside each practice the standard answers that and stays
+    accurate to $\varepsilon^{*} = 0.5$.
   & Measured \\
 \addlinespace
 What is the privacy budget? (\S\ref{sec:budget})
@@ -33,8 +49,10 @@ What is the privacy budget? (\S\ref{sec:budget})
   & Measured \\
 \addlinespace
 How is $\varepsilon$ reduced without losing accuracy? (\S\ref{sec:reduce})
-  & Fewer rounds, convergence is reached by round~10, so halving the round count halves the
-    budget for nothing. Then more practices.
+  & Fewer rounds, convergence is reached by round~10, so the round count is now 10. Then
+    per-practice orchestration of the DP-SGD settings, which replaces a 1.10--16.04 spread in the
+    budget actually delivered with one shared $\varepsilon^{*}$ for every practice. Then more
+    practices.
   & Measured \\
 \addlinespace
 Can aggregated results be de-aggregated?

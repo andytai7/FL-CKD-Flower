@@ -317,7 +317,7 @@ Two hard rules a pilot must plan around:
 
 **Secure Aggregation needs the legacy workflow path** — `SecAggPlusWorkflow` requires a
 `LegacyContext` and cannot compose with `strategy.start()` in 1.33; the working construction is in
-[PRIVACY.md §4](PRIVACY.md#4-l3--secagg-is-achievable-but-not-on-the-same-code-path) and is what
+[PRIVACY.md §4](PRIVACY.md#4-l3--secagg-is-implemented) and is what
 `secure-aggregation=true` drives, **including for the standard's census round** (the headcount is
 collected over the masked rails; on the legacy path the per-clinic plans are stamped into each
 client's `FitIns`). Verified end-to-end: 12 practices, fit and evaluate with 0 failures.
@@ -325,8 +325,9 @@ client's `FitIns`). Verified end-to-end: 12 practices, fit and evaluate with 0 f
 **The two comparison baselines remain available** for audits/`PRIVACY.md` tables, decided by run
 config, not code: `central-dp-epsilon=<ε>` (budget-first; σ derived by `dp.sigma_for_epsilon` for
 the run's round count, server-side clipping — cannot combine with `secure-aggregation=true`, which
-the log will refuse) and `local-dp-epsilon=<ε>` (update-level client-side clipping; deployable
-under SecAgg but measured unusable at defensible budgets — worst practice 0.397 at ε≈4.3,
+the log will refuse) and `local-dp-epsilon=<ε>` (update-level client-side clipping; message-API path only — flwr 1.33's `LocalDpMod` is record-key-shaped and the
+SecAgg+ legacy rail cannot serve it, so the server refuses `secure-aggregation=true` with
+`local-dp-epsilon > 0` — and measured unusable at defensible budgets — worst practice 0.397 at ε≈4.3,
 [PRIVACY.md §3](PRIVACY.md#3-l4--what-differential-privacy-actually-costs)). The comparison is why
 the standard exists; the standard is what ships.
 
