@@ -219,6 +219,7 @@ uv run ckd-web --port 8080  # http://127.0.0.1:8080
 Model and scaler come from the exported artifact (sandbox reference scaler on the pooled synthetic
 cohort — a deployment would pair the model with the practice-local scaler). ⚠️ Demo on synthetic
 data — not a medical device, not for clinical decisions.
+Full doc: [docs/WEBAPP.md](docs/WEBAPP.md) (interface, proxying into the Kubeflow pod, screenshots).
 
 ---
 
