@@ -1,0 +1,108 @@
+{
+  "suite": "imbalance",
+  "num_clinics": 10,
+  "base_seed": 1000042,
+  "hardness": {
+    "interaction_dm_age": 0.0,
+    "interaction_age_relu": 0.0,
+    "frailty_sd": 0.0,
+    "frailty_feature_load": 1.3,
+    "frailty_risk_beta": 0.55,
+    "risk_noise_sd": 0.0,
+    "label_fn": 0.0,
+    "label_fp": 0.0,
+    "beta_jitter": 0.0,
+    "undercode_lo": 1.0,
+    "intercept_jitter": 0.9,
+    "years_lognormal": false,
+    "intercept_shift": -1.5983741283416748
+  },
+  "sizes": [
+    40,
+    60,
+    90,
+    120,
+    150,
+    200,
+    280,
+    380,
+    500,
+    620
+  ],
+  "diagnostics": {
+    "bayes_auroc": 0.8651,
+    "logreg_ceiling_auroc": 0.8665,
+    "prevalence_observed": 0.1319,
+    "max_abs_feature_corr": 0.8455,
+    "max_abs_flag_corr": 0.051
+  },
+  "clinics": [
+    {
+      "clinic_id": 0,
+      "archetype": "urban-young",
+      "n": 40,
+      "ckd_rate": 0.025
+    },
+    {
+      "clinic_id": 1,
+      "archetype": "rural-elderly",
+      "n": 60,
+      "ckd_rate": 0.2167
+    },
+    {
+      "clinic_id": 2,
+      "archetype": "metabolic",
+      "n": 90,
+      "ckd_rate": 0.0444
+    },
+    {
+      "clinic_id": 3,
+      "archetype": "high-cvd",
+      "n": 120,
+      "ckd_rate": 0.6
+    },
+    {
+      "clinic_id": 4,
+      "archetype": "mixed",
+      "n": 150,
+      "ckd_rate": 0.16
+    },
+    {
+      "clinic_id": 5,
+      "archetype": "urban-young",
+      "n": 200,
+      "ckd_rate": 0.105
+    },
+    {
+      "clinic_id": 6,
+      "archetype": "rural-elderly",
+      "n": 280,
+      "ckd_rate": 0.475
+    },
+    {
+      "clinic_id": 7,
+      "archetype": "metabolic",
+      "n": 380,
+      "ckd_rate": 0.4026
+    },
+    {
+      "clinic_id": 8,
+      "archetype": "high-cvd",
+      "n": 500,
+      "ckd_rate": 0.218
+    },
+    {
+      "clinic_id": 9,
+      "archetype": "mixed",
+      "n": 620,
+      "ckd_rate": 0.0274
+    }
+  ],
+  "v1_reference": {
+    "bayes_auroc": 0.8513,
+    "logreg_ceiling_auroc": 0.8513,
+    "prevalence_pooled": 0.309,
+    "max_abs_flag_corr": 0.057,
+    "note": "200k Monte-Carlo, 2026-09-03"
+  }
+}
