@@ -1,0 +1,174 @@
+{
+  "source": "NHANES 2011-2018 (Q/G/H/I cycles)",
+  "label": "eGFR<60 (KDIGO stage>=3 prevalence; CKD-EPI 2021 race-free)",
+  "n_participants": 21102,
+  "prevalence": 0.0783,
+  "coding_loss": [
+    {
+      "cycle": 2011,
+      "participants_in": 9756,
+      "with_creatinine": 5107,
+      "used": 5107,
+      "invalid_codes": {
+        "htn": 7,
+        "dm": 4,
+        "chf": 279,
+        "chd": 283,
+        "gout": 270
+      }
+    },
+    {
+      "cycle": 2013,
+      "participants_in": 10175,
+      "with_creatinine": 5563,
+      "used": 5563,
+      "invalid_codes": {
+        "htn": 4,
+        "dm": 3,
+        "chf": 303,
+        "chd": 312,
+        "gout": 298
+      }
+    },
+    {
+      "cycle": 2015,
+      "participants_in": 9971,
+      "with_creatinine": 5325,
+      "used": 5325,
+      "invalid_codes": {
+        "htn": 5,
+        "dm": 4,
+        "chf": 245,
+        "chd": 260,
+        "gout": 244
+      }
+    },
+    {
+      "cycle": 2017,
+      "participants_in": 9254,
+      "with_creatinine": 5107,
+      "used": 5107,
+      "invalid_codes": {
+        "htn": 10,
+        "dm": 4,
+        "chf": 253,
+        "chd": 253,
+        "gout": 244
+      }
+    }
+  ],
+  "clinics": [
+    {
+      "clinic_id": 0,
+      "name": "2011-female",
+      "n": 2542,
+      "ckd_rate": 0.0791,
+      "dir": "clinics_nhanes"
+    },
+    {
+      "clinic_id": 1,
+      "name": "2011-male",
+      "n": 2565,
+      "ckd_rate": 0.0784,
+      "dir": "clinics_nhanes"
+    },
+    {
+      "clinic_id": 2,
+      "name": "2013-female",
+      "n": 2887,
+      "ckd_rate": 0.0786,
+      "dir": "clinics_nhanes"
+    },
+    {
+      "clinic_id": 3,
+      "name": "2013-male",
+      "n": 2676,
+      "ckd_rate": 0.0755,
+      "dir": "clinics_nhanes"
+    },
+    {
+      "clinic_id": 4,
+      "name": "2015-female",
+      "n": 2723,
+      "ckd_rate": 0.0731,
+      "dir": "clinics_nhanes"
+    },
+    {
+      "clinic_id": 5,
+      "name": "2015-male",
+      "n": 2602,
+      "ckd_rate": 0.0692,
+      "dir": "clinics_nhanes"
+    },
+    {
+      "clinic_id": 6,
+      "name": "2017-female",
+      "n": 2626,
+      "ckd_rate": 0.0853,
+      "dir": "clinics_nhanes"
+    },
+    {
+      "clinic_id": 7,
+      "name": "2017-male",
+      "n": 2481,
+      "ckd_rate": 0.0883,
+      "dir": "clinics_nhanes"
+    },
+    {
+      "clinic_id": 0,
+      "name": "2011-female",
+      "n": 190,
+      "ckd_rate": 0.0737,
+      "dir": "clinics_nhanes_s"
+    },
+    {
+      "clinic_id": 1,
+      "name": "2011-male",
+      "n": 499,
+      "ckd_rate": 0.0842,
+      "dir": "clinics_nhanes_s"
+    },
+    {
+      "clinic_id": 2,
+      "name": "2013-female",
+      "n": 445,
+      "ckd_rate": 0.0809,
+      "dir": "clinics_nhanes_s"
+    },
+    {
+      "clinic_id": 3,
+      "name": "2013-male",
+      "n": 347,
+      "ckd_rate": 0.098,
+      "dir": "clinics_nhanes_s"
+    },
+    {
+      "clinic_id": 4,
+      "name": "2015-female",
+      "n": 345,
+      "ckd_rate": 0.0754,
+      "dir": "clinics_nhanes_s"
+    },
+    {
+      "clinic_id": 5,
+      "name": "2015-male",
+      "n": 537,
+      "ckd_rate": 0.0708,
+      "dir": "clinics_nhanes_s"
+    },
+    {
+      "clinic_id": 6,
+      "name": "2017-female",
+      "n": 188,
+      "ckd_rate": 0.1064,
+      "dir": "clinics_nhanes_s"
+    },
+    {
+      "clinic_id": 7,
+      "name": "2017-male",
+      "n": 464,
+      "ckd_rate": 0.1013,
+      "dir": "clinics_nhanes_s"
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "source": "UCI CKD #336 (Apollo Hospitals, Tamil Nadu, ~2 months)",
+  "label": "class==ckd (chart review, not stage-graded)",
+  "n": 399,
+  "ckd_rate": 0.6266,
+  "audit": {
+    "parse": {
+      "trailing_comma_repaired": 2,
+      "quarantined_rows": [
+        {
+          "line": 515,
+          "n_fields": 26
+        }
+      ]
+    },
+    "htn": {
+      "repaired": 0
+    },
+    "dm": {
+      "repaired": 0
+    },
+    "cad": {
+      "repaired": 0
+    },
+    "class": {
+      "repaired": 0
+    },
+    "numeric_repairs": {
+      "age": {
+        "garbage_values": 0,
+        "missing_share": 0.0226
+      },
+      "bp": {
+        "garbage_values": 0,
+        "missing_share": 0.0301
+      },
+      "sg": {
+        "garbage_values": 0,
+        "missing_share": 0.1178
+      },
+      "al": {
+        "garbage_values": 0,
+        "missing_share": 0.1153
+      },
+      "su": {
+        "garbage_values": 0,
+        "missing_share": 0.1228
+      },
+      "bgr": {
+        "garbage_values": 0,
+        "missing_share": 0.1103
+      },
+      "bu": {
+        "garbage_values": 0,
+        "missing_share": 0.0476
+      },
+      "sc": {
+        "garbage_values": 0,
+        "missing_share": 0.0426
+      },
+      "sod": {
+        "garbage_values": 0,
+        "missing_share": 0.218
+      },
+      "pot": {
+        "garbage_values": 0,
+        "missing_share": 0.2206
+      },
+      "hemo": {
+        "garbage_values": 0,
+        "missing_share": 0.1303
+      },
+      "pcv": {
+        "garbage_values": 0,
+        "missing_share": 0.1779
+      }
+    }
+  },
+  "note": "single clinic by design; missing comorbidity families are structural zeros"
+}
