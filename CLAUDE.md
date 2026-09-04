@@ -9,6 +9,24 @@
 
 ---
 
+## 0a. Branch charter — experiment/timeseries
+
+The single-lead-ECG time-series track. Dataset: PhysioNet CinC Challenge 2017 (8,244 recordings
+after dropping the 284 noisy `~`; AF-vs-rest, prevalence 0.0895) — provenance, zip checksum, and
+the User-Agent gotcha in `data/external/SOURCES.md`. Mapper:
+`data/external/ecg_cinc2017_to_clinics.py` → `data/clinics_ecg/` — 10 Dirichlet-skewed
+pseudo-practices (accepted seed 48), 309 features per recording (300-bin waveform block profile
++ 9 amplitude/spectral statistics). Track notebook: `notebooks/07_cinc2017_afib.ipynb`
+(executed; AUROC rising into the 0.63–0.65 band by round 15, worst practice ≈0.56). First
+TODOs: sensitivity at a fixed operating point instead of the 0.5 threshold; band-limited or
+higher-resolution profile features; more local epochs; FedProx μ against the skewed shards.
+
+All rules in this file bind unmodified — rule 2 included: binary logistic regression over the
+309-column feature frame. The 4-class rhythm target and any sequence model are consortium
+decisions (`research/privacy-dl-ts` is the sanctioned DL sandbox), not track work.
+
+---
+
 ## 0. Immutable constraints — DO NOT VIOLATE (read first)
 
 > 🔒 **These are non-negotiable project invariants.** They override convenience, performance, and
