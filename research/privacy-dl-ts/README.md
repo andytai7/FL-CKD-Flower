@@ -458,3 +458,58 @@ cited formulas, measured SecAgg+ reference only).
   (clip-rate audit, FedProx-compatible proximal term) + `p1_spine.py` ε-grid {off,0.5,1,2,4,8}
   runner with per-clinic standardised plans (σ_k so every clinic composes the SAME target ε);
   unit-checked budget direction.
+
+### 2.3 Measured P1-P4 + forecasting results (2026-09-04)
+
+Artifacts: `results/dl_ts_*.json` (gitignored; regenerate with the module runners).
+
+**P1 record-level DP-Adam (FedAvgM), seed 42, round-10 AUROC** (`dl_ts_p1_adam.json` —
+SUPERSEDES the pass-1 `dl_ts_p1.json` after the local-optimizer audit): off 0.492 | ε:
+0.5->0.558, 1->0.562, 2->0.547, 4->0.532, 8->0.495. Transport arms at ε=1 (same local rule):
+fedavg 0.563 / fedprox-0.1 0.564 / fedavgm 0.562 — **transport-neutral inside DP noise**
+(matrix Q3). Seed dispersion on ε {off,1,4} over 43-46: ε=1 band 0.439-0.625 (mean 0.541,
+σ 0.086); privacy cost sits inside the seed band at the 10-round budget. The off-arm is the
+consistently weakest row (0.49-0.51 at most seeds): DP-Adam at this round budget undertrains
+the conv-LSTM — the gate's 0.635 band came from batch-Adam multi-step local training and is
+RECOVERABLE only with more rounds; recorded, not papered over.
+
+**Audit note (why pass-1 was replaced)**: the first P1 pass stepped plain SGD on clipped
+noised means at lr 0.5; seed-43 at r20 never left 0.50 (and lr 0.05/0.1 were equally flat at
+r10, seeds 43-45). DP-Adam (Adam moments on the noised aggregate — post-processing, privacy
+untouched) restores learning; absolute levels on this 63k-param RNN at 10 rounds remain
+seed-fragile (worst-clinic singles 0.07-0.47 across seeds).
+
+**P3 FedCT** (`dl_ts_p3.json`, seed 42): γ̂=0.063, majority acc 0.707, clean-arm ceiling — but
+vote noise σ_v 432-27,457 vs K=10 votes at ε∈[0.5,8] → **every paid cell NaN** (students at
+chance): consensus voting is destroyed at this bench scale, matching the image track's
+independent P3. Conservative vs refined sensitivity rows both recorded; the refined row's
+near-free labels flagged as the research-risk audit.
+
+**P4 verified-hybrid DDG** (`dl_ts_p4.json`, seed 42): exact discrete-Gaussian sampler
+(KS 0.002-0.004 vs tol 0.0095), composition audit KS 0.0066 under the 3/√n floor, norm proofs
+verified on every round (unclipped witness correctly rejected). Grid r10 AUROC: off 0.539 |
+ε 0.5->0.451, 1->0.409, 2->0.498, 4->0.621, 8->0.571 (terminate-round non-monotonicity =
+seed-fragility, in family with the P1 dispersion).
+
+**P2 SecAgg+** (`dl_ts_p2.json`): analytic cost table (secagg/secagg+/fastsecagg/lightsecagg
+× wire sizes × dropout retention) + measured-limited deployment probe row: the flwr built-in
+SecAggPlusWorkflow over 10 supernodes reached RUNNING and "Secure aggregation commencing" at
+the real 63,425-int wire, then stage-1 message dispatch wedged for 55 min (zero node traffic,
+no stage error at INFO, 300 s per-stage timeouts never tripped) and was stopped manually.
+SuperExec note: flwr 1.33 only auto-spawns the run executor with `--isolation subprocess`
+(`--isolation process` produces a forever-PENDING superlink).
+
+**Forecasting cross-check** (`dl_ts_forecast_grid.json`): full ETTh1 horizons — GRU
+0.149/0.151/0.239 vs LSTM 0.342/0.278/0.315 (h96/192/336); h=96 matrix: ETTm1 GRU 0.0553 vs
+LSTM 0.0786; Weather GRU 0.1326 vs LSTM 0.2327. **GRU is the reference forecaster on all three
+suites**; ACF correlation of forecasts vs targets = 0.99 on weather (temporal fidelity
+measured, not assumed).
+
+**Forecast-P1** (`dl_ts_forecast_p1.json`): event-level (per-window DP-SGD) pilot on
+weather/h96 — honest per-record loops on the decoder rollout cost ~25 min/round at bench
+scale, so the arm ran at pilot footprint (rounds=3, steps_epochs=0.03, labelled pilot):
+MSE off 1.192 vs ε 0.5-8 ∈ [1.177, 1.192] (pre-learning plateau). **User-level (trajectory)
+DP: EVERY paid cell collapses** — clip-1.0 round-delta + Gaussian σ at wire scale d≈39k with
+effective norm multiplier σ·√d ≈ 400 at ε=1 → MSE 1,100+ then NaN (ε=8 rows MSE 27-52 alive
+but destroyed). The user-level trajectory-DP infeasibility at this parameter scale is a
+matrix finding, recorded as honest NaN rows.
