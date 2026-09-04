@@ -11,15 +11,27 @@
 
 ## 0a. Branch charter — dev
 
-Integration branch (the gitflow middle). Starts from `main`'s frozen infrastructure and carries
-the shared groundwork every track needs ahead of any milestone merge. Currently on top of
-`main`: externals provenance + gitignore for DermaMNIST and CinC 2017 (`SOURCES.md`), and the
-generic preprocessing plumbing — `to_xy` generic-label dispatch (`melanoma` / `afib`),
-schema-aware `load_dataframe` validation, `dirichlet_partition(label_col=...)`, data-driven
-model width in `simulate.py` (V1 regression verified: ≈0.795 AUROC unchanged).
+Integration branch **and home of the methodology toolkit** (user-directed topology,
+2026-09-04): **branches name data kinds — never methodologies.** The four privacy/FL paradigms of
+the deep-time-series benchmark live as shared code under `research/privacy-dl-ts/` (design
+contract: `research/privacy-dl-ts/README.md`), built here and imported by every data track; each
+`experiment/<data-kind>` branch runs the *same* methodology matrix over *its* data, so
+cross-method comparison is a table and cross-data comparison is three tables side by side.
 
-All rules bind unmodified. Track branches (`experiment/*`, `research/*`) fork from here and
-merge back here; `main` receives only reviewed merges.
+Currently on top of `main`: externals provenance + gitignore for DermaMNIST and CinC 2017
+(`SOURCES.md`); generic preprocessing plumbing (`to_xy` generic-label dispatch, schema-aware
+`load_dataframe`, `dirichlet_partition(label_col=...)`, data-driven model width in
+`simulate.py`; V1 regression verified ≈0.795 AUROC unchanged); the benchmark design contract.
+
+**DL scope discipline:** the deployable FLIP-IT paths (`server_app.py`, `client_app.py`, the
+Flower App Bundle) stay logistic-regression-only (rule 2). Deep models (LSTM/GRU/PatchTST) are
+benchmark code under `research/`, gated behind the uv-managed optional `dl` extra (rule 4), and
+never imported by the deployment modules. Rules 1 and 8 bind everywhere, toolkit included:
+Flower transports only; every protocol is a `Strategy` subclass.
+
+---
+
+## 0. Immutable constraints — DO NOT VIOLATE (read first)
 
 ---
 
