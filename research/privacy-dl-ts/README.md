@@ -17,6 +17,17 @@
 > by side because they protect different adjacencies. FedCT is the gradient-free alternative,
 > SecAgg+ the wire layer, and the verified hybrid the malicious-server arm.
 >
+> **Transport (aggregator) — measured (2026-09-04).** On the convex logreg proxy over
+> `data/clinics_ecg` (309-col profile features; shared-learner protocol bench, 15 rounds),
+> FedAvg and FedProx μ=0.1 are **indistinguishable** (r15 AUROC 0.625 / worst 0.581 both;
+> max drawdown 0.001 both) — standardized, low-correlation feature frames do not trigger client
+> drift, so FedAvg stays the default transport for the proxy runs. Under the RNN arms
+> (non-convex local objectives, stronger drift pressure), the matrix keeps **FedAvg as baseline
+> and FedProx μ=0.1 as the stabilization arm**; if drift appears (parity oscillation or worst-
+> practice regression vs pooled baseline), FedAvgM is the next sanctioned `Strategy`-subclass
+> arm. Accounting is transport-agnostic: clip-then-SecAgg-averaged is unchanged under FedProx
+> (proximal term is local-objective-only), so P1/P4 sensitivity analysis below holds unchanged.
+>
 > **Status: design milestone.** The four paradigms are specified below with modular class
 > blueprints, exact sensitivity formulations, temporal-handling choices, and the evaluation
 > framework. Implementation lands per the work plan in §7; every claim about an external
