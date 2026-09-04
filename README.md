@@ -320,16 +320,21 @@ tasks). Rehearse an extraction on the practice box with
 
 ## Branches
 
-A simple gitflow: `main` is the **frozen infrastructure**, `dev` is the integration branch, and
-each data kind gets its own `experiment/` track.
+Gitflow with a hard topology rule: **`main` is the frozen infrastructure, `dev` is the
+integration branch, and every remaining branch names a data kind — never a methodology.**
+Methodologies are **categorized for their data kind and committed on the matching data
+branch**, not pooled on `dev`: each data branch's `research/` tree holds the privacy/FL
+protocols adapted to its modality (model class + the privacy model right for that space), so
+cross-method comparison within a modality is one table on one branch and cross-modality
+comparison is reading the branches side by side.
 
 | Branch | Role | Rule |
 |---|---|---|
 | `main` | Frozen infrastructure: Flower app, runners, the V1 data contract, published baselines | Changed only by reviewed merges from `dev` |
-| `dev` | Integration branch. Starts identical to `main`; dataset plumbing (mappers, provenance) and finalized track work land here first | Merge to `main` at milestones |
-| `experiment/tabular` | The tabular CKD federation: V1 clinics (frozen contract), the 8 V2 hardness suites as a run matrix, NHANES / UCI / Synthea mappers | Track experiments; merge back via `dev` |
-| `experiment/image` | Dermoscopy image track — MedMNIST DermaMNIST (skin-lesion diagnosis, a GP triage task); raw payload under `data/external/dermamnist/` | Same pattern |
-| `experiment/timeseries` | Single-lead ECG track — PhysioNet CinC Challenge 2017 (atrial-fibrillation screening); raw payload under `data/external/ecg_cinc2017/` | Same pattern |
+| `dev` | Integration branch: finalized shared plumbing lands here first | **No methodology code** — methods are categorized per data branch; merge to `main` at milestones |
+| `experiment/tabular` | Tabular CKD federation: V1 clinics (frozen contract), the 8 V2 hardness suites as a run matrix, NHANES / UCI / Synthea mapped cohorts | Tabular privacy grid (the L0–L6 standard + V2 audits); merges back via `dev` |
+| `experiment/image` | Dermoscopy image track — MedMNIST DermaMNIST. Its DL × privacy benchmark at `research/privacy-dl-image/`: **FedAvg transport, CNN model arms, per-image record-level DP-SGD** + FedCT / SecAgg+ / verified-hybrid arms; MIA a first-class metric | DL code research-tree only (dated track-local rule-2 waiver, see its CLAUDE.md §0a) |
+| `experiment/timeseries` | Single-lead ECG track — PhysioNet CinC 2017. Its DL × privacy benchmark at `research/privacy-dl-ts/`: **RNN arms (LSTM/GRU), user-level trajectory DP with RDP accounting** + event-level contrast; FedCT / SecAgg+ / verified-hybrid arms | DL code research-tree only (dated track-local rule-2 waiver) |
 | `experiment/privacy-protocol` | Legacy privacy-protocol lab bench (T2.3 → MS4); stays stale at the frozen commit until protocol work resumes | Finalize there, then merge back |
 
 Rules of the road:
@@ -338,11 +343,14 @@ Rules of the road:
    gitignored; regenerate synthetic suites via the CLIs, re-download externals via the URLs and
    checksums in [`data/external/SOURCES.md`](data/external/SOURCES.md). A branch carries code,
    config, and provenance — never data.
-2. **One `experiment/` branch per data kind, not per dataset folder.** The eight V2 suites are a
-   run matrix inside `experiment/tabular`, not eight branches.
+2. **One `experiment/` branch per data kind, not per dataset folder and not per method.** The
+   eight V2 suites are a run matrix inside `experiment/tabular`; methodology variants are
+   benchmark *arms* inside the owning data branch's matrix, never branches. A comparison that
+   needs a branch to exist is a failure of the harness, not a reason to fork topology.
 3. New federation logic stays a Flower `Strategy` subclass over the permitted model class
-   ([CLAUDE.md](CLAUDE.md) rules 1–2): image and time-series targets train linear-over-features
-   (flattened pixels / waveform features) unless the consortium re-scopes rule 2.
+   ([CLAUDE.md](CLAUDE.md) rules 1–2). Deployable paths (`server_app.py`, `client_app.py`) stay
+   logreg-only; DL benchmark models live in the owning data branch's `research/` tree behind the
+   optional `dl` uv dependency and are never wired into the Flower App Bundle.
 4. Anything that changes the privacy machinery itself (`dpsgd.py`, `orchestrator.py`,
-   `privacy.py`, run-config privacy keys, notebooks 02/03) belongs on a track branch, not on
-   `main`/`dev`, until finalized.
+   `privacy.py`, run-config privacy keys, notebooks 02/03) lands on `dev` first and is reviewed
+   into `main` at milestones.

@@ -40,6 +40,12 @@ notebook = [
     "nbconvert>=7.0.0",
     "jupyterlab>=4.0.0",
 ]
+# Deep-learning research tracks (experiment/image, experiment/timeseries): torch, CPU wheels
+# (peer clusters are CPU; CI is CPU). Never imported by the deployable modules — research/
+# trees only (CLAUDE.md §0a).
+dl = [
+    "torch>=2.2,<2.8",
+]
 
 [project.scripts]
 # Ray-free local federated simulation (works on paths with spaces). Run: uv run ckd-simulate
@@ -195,6 +201,15 @@ secagg-reconstruction-threshold = 2   # shares needed to recover a dropped pract
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+# Resolve torch from the CPU wheel index so the `dl` extra doesn't pull multi-GB CUDA builds.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
 
 [tool.ruff.lint.per-file-ignores]
 # Notebooks: sys.path bootstrap before imports (E402); compact one-line statements and grouped
