@@ -33,6 +33,9 @@ optional attention ablation, not the benchmark model); **privacy model for this 
 honest unit; FedCT consensus is the gradient-free alternative, SecAgg+ the wire layer, the
 verified-hybrid SecAgg+DDG+norm-proof arm the malicious-server posture. Rules 1 (Flower-only) and
 8 (Strategy subclasses) still bind; torch enters as the uv-managed optional `dl` extra (rule 4).
+---
+
+## 0. Immutable constraints — DO NOT VIOLATE (read first)
 
 ---
 
