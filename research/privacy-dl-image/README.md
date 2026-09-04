@@ -213,7 +213,84 @@ Matrix shape identical to the time-series bench so cross-data-kind comparison re
    honest guarantee for dermoscopy; documented limitation otherwise.
 7. Merge cadence: results return to `dev`→`main` at milestones per the branch table.
 
-## 8. References
+## 8. Measured results (2026-09-04, seeds 42-46 pilots)
+
+All numbers are recorded in `results/dl_image_*.json` (gitignored; regenerate via the
+`python -m research.privacy_dl_image.<module>` runners). Single-seed-42 shape data for the
+full ε grids; dispersion on the headline ε {off, 1, 4} from seeds 43-46.
+
+### P1 — record-level DP-SGD on CNN-S (FedProx μ=0.1 transport), AUROC at round 10
+
+| ε | seed 42 | seeds 43-46 range (headline ε subset) |
+|---|---|---|
+| off | 0.606 | 0.592 – 0.636 |
+| 0.5 | 0.657 | — |
+| 1 | 0.657 | 0.579 – 0.627 |
+| 2 | 0.657 | — |
+| 4 | 0.657 | 0.583 – 0.630 |
+| 8 | 0.657 | — |
+| 16 | 0.657 | — |
+
+Findings: (i) at the 10-round bench budget the arm is **utility-flat across ε ∈ [0.5, 16]** —
+round-1 rows separate monotonically in ε (0.6550 → 0.6532) but all cells converge to the
+same fixed point by round 10; (ii) the off-arm (σ=0, clip active) is the weakest link
+(0.606), a clipping-regularization effect; (iii) **loss-threshold MIA: no detectable
+advantage at ANY ε including off** (attack AUC 0.499-0.501, TPR@FPR=1% = 0.70-0.80×
+marginal) — recorded as a lower-bound audit (shadow-model attacks out of scope);
+(iv) worst-clinic AUROC dips to 0.000 on seed 46 for every ε — clinic 5's 8-row test fold
+{7 negative, 1 positive}: an 8-row-eval variance artifact of the benchmark's fairness column,
+not a DP effect (n_te≥15 folds are stable); (v) per-clinic composed ε ≤ target verified
+exactly on every cell. Seed-42 DP rows share subsample draws across ε (in-cell metrics fine;
+the sweep rows redecorrelate).
+
+### P3 — FedCT consensus (isolated teachers, train-carve public pool q≤512, seed 42)
+
+γ̂ = 0.037; teacher majority-vote accuracy 0.564 on a pool with prevalence 0.105; clean
+(σ_v=0) distilled student AUROC 0.595 (9/10 clinics defined — clinic 5's fold single-class,
+counted in-row). **Every paid cell is destroyed**: Gaussian count noise σ_v ∈ [1,716 ;
+27,457] against K=10 votes (ε ∈ [0.5, 8]) → students at chance (NaN). Consensus voting is
+nonviable at bench scale; the clean-arm result is the information ceiling if query volume
+grew an order of magnitude.
+
+### P4 — verified-hybrid DDG (mod-2³² ring, scale 1e-3, FedAvg wire), AUROC at round 10
+
+| ε | seed 42 |
+|---|---|
+| off | 0.649 |
+| 0.5 | 0.628 |
+| 1 | 0.638 |
+| 2 | 0.628 |
+| 4 | 0.627 |
+| 8 | 0.627 |
+| 16 | 0.632 |
+
+Norm proofs verified on every round of every cell; KLS feasibility (σ_int ≥ 2) holds at all
+paid ε; composed ε exact under the same epsilon_rdp accounting as P1. The ~0.02-0.03 gap vs
+P1's fedprox rows is the transport confound (FedAvg single-masker wire), not the DDG
+noising; quantizer hooks proved benign by the off-row. **P4 beats P1 on the off-arm**
+(0.649 vs 0.606 — clip-heavy FedAvg + integer sums converge better than clip+FedProx here).
+
+### P2 — SecAgg+ cost row
+
+Analytic table (`secagg_cost.bench_table`) at wire sizes 28,577 (CNN-S) and 2,758,177
+(CNN-M): 64 rows {secagg, secagg_plus, fastsecagg, lightsecagg} × client-count × dropout
+retention. Measured deployment probe cross-reference: `results/dl_ts_p2.json` (identical
+built-in workflow); stage-1 dispatch wedge over 10 supernodes recorded there honestly —
+E2E runtime at image wire sizes not claimed.
+
+### HAM10000 patient-level reattachment (work plan §6 step 6) — DOCUMENTED LIMITATION
+
+HAM10000 metadata downloaded (Dataverse file 4338392; lesion_id is the finest patient-level
+unit) but **row reattachment is not recoverable from this payload**: MedMNIST shuffled
+HAM10000-derived rows with an undisclosed permutation when building dermamnist.npz, and the
+original 600×450 pixels (which would allow pixel-hash matching) are not available. An
+ordering sweep (as-is / image_id / lesion_id sorts; RandomState seed scan 0-4000; sklearn
+train_test_split rs ∈ [0,200) with and without stratification) found no exact
+label-sequence match. User-level (patient-level) DP on dermoscopy therefore cannot run on
+this parity-check payload; it stays in scope only if MedMNIST's construction permutation or
+the raw HAM10000 imagery becomes available.
+
+## 9. References
 
 Dockhorn et al. `DP-SGD vs PATE` (ICLR 2023). Kairouz–Liu–Steinke, *The Distributed Discrete Gaussian
 Mechanism for Federated Learning* (arXiv 2102.06387). Rathgeb et al., *ELSA: Secure Aggregation via
