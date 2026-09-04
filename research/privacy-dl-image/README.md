@@ -55,7 +55,7 @@ Models (reference architectures; code lands on this branch under `research/priva
 | Model | Params (fp32 wire size) | Note |
 |---|---|---|
 | CNN-S: conv(3→16, k5)+pool, conv(16→32, k3)+pool, conv(32→64, k3)+pool, GAP → fc(64→64) → head | ≈28k (≈0.11 MB) | Primary arm. Chosen so the $\sqrt p$ DP cost stays in the same order as the logreg baseline — isolates "DL per se" from "dimension per se" |
-| CNN-M: ResNet-18-style lite (no pretrained weights) | ≈1.5M (≈5.7 MB) | Scaling probe: what record-level DP costs when $p\u2192$ millions on images |
+| CNN-M: ResNet-18-style lite (no pretrained weights) | ≈2.76M measured (≈10.5 MB) | Scaling probe: what record-level DP costs when $p\u2192$ millions on images |
 | logreg over flattened pixels | 2,352 (9.4 KB) | Neutral FedAvg row — the existing baseline from notebook 06 |
 
 ## 1. Paradigm P1 — Gradient-space DP with tight accounting (record-level; the baseline guarantee for images)
