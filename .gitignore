@@ -9,6 +9,7 @@ __pycache__/
 # Generated per-clinic datasets — regenerate with `uv run ckd-clinics`, never committed.
 data/clinics/
 data/clinics_ladder/
+data/clinics_ecg_seq/
 # Raw external payloads (NHANES XPTs, Synthea zips/FHIR bundles, UCI CKD, DermaMNIST npz,
 # CinC 2017 ECG) — re-download via the URLs + checksums in data/external/SOURCES.md, then
 # re-run the data/external/*_to_clinics.py mappers. Only the mappers and SOURCES.md are tracked.
