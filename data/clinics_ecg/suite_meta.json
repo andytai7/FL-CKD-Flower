@@ -1,0 +1,101 @@
+{
+  "source": "PhysioNet CinC Challenge 2017 v1.0.0 (single-lead ECG, AliveCor Kardia)",
+  "label": "afib = REFERENCE 'A' (binary; N/O pooled as 0; '~' noisy dropped)",
+  "task": "time series: 300 Hz lead-I ECG, 9-60 s, waveform block profile + spectral stats",
+  "n_recordings": 8244,
+  "n_dropped_noisy": 284,
+  "prevalence": 0.0895,
+  "features": {
+    "stats": [
+      "duration_s",
+      "amp_mean",
+      "amp_std",
+      "amp_rms",
+      "amp_skew",
+      "amp_kurt",
+      "dom_freq_hz",
+      "dom_power_share",
+      "spec_entropy"
+    ],
+    "profile": "w0000-w0299 (6000-pt resample -> 300 block means)"
+  },
+  "partition": {
+    "method": "dirichlet-label",
+    "alpha": 0.5,
+    "seed": 48,
+    "num_clinics": 10
+  },
+  "note": "No patient/site keys at this payload level (one recording per subject); federation is simulated. PhysioNet open access.",
+  "clinics": [
+    {
+      "clinic_id": 0,
+      "name": "shard-00",
+      "n": 102,
+      "af_rate": 0.8431,
+      "dir": "clinics_ecg"
+    },
+    {
+      "clinic_id": 1,
+      "name": "shard-01",
+      "n": 1519,
+      "af_rate": 0.0046,
+      "dir": "clinics_ecg"
+    },
+    {
+      "clinic_id": 2,
+      "name": "shard-02",
+      "n": 114,
+      "af_rate": 0.3772,
+      "dir": "clinics_ecg"
+    },
+    {
+      "clinic_id": 3,
+      "name": "shard-03",
+      "n": 3063,
+      "af_rate": 0.0235,
+      "dir": "clinics_ecg"
+    },
+    {
+      "clinic_id": 4,
+      "name": "shard-04",
+      "n": 69,
+      "af_rate": 0.2174,
+      "dir": "clinics_ecg"
+    },
+    {
+      "clinic_id": 5,
+      "name": "shard-05",
+      "n": 367,
+      "af_rate": 0.7984,
+      "dir": "clinics_ecg"
+    },
+    {
+      "clinic_id": 6,
+      "name": "shard-06",
+      "n": 475,
+      "af_rate": 0.0189,
+      "dir": "clinics_ecg"
+    },
+    {
+      "clinic_id": 7,
+      "name": "shard-07",
+      "n": 409,
+      "af_rate": 0.2078,
+      "dir": "clinics_ecg"
+    },
+    {
+      "clinic_id": 8,
+      "name": "shard-08",
+      "n": 382,
+      "af_rate": 0.3089,
+      "dir": "clinics_ecg"
+    },
+    {
+      "clinic_id": 9,
+      "name": "shard-09",
+      "n": 1744,
+      "af_rate": 0.0057,
+      "dir": "clinics_ecg"
+    }
+  ]
+}
