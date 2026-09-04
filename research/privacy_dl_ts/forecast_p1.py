@@ -55,8 +55,13 @@ def per_window_grads(model: nn.Module, X: np.ndarray, y: np.ndarray,
 
 def event_level_cell(*, epsilon: float | None, rounds: int, splits: list[dict],
                      clinic_ns: list[int], suite: str, horizon: int, seed: int,
-                     batch: int = 32, steps_epochs: float = 0.25, clip: float = 1.0,
+                     batch: int = 128, steps_epochs: float = 0.03, clip: float = 1.0,
                      lr: float = 0.1, quiet: bool = False) -> dict:
+    """PILOT-SCALE event-level row: honest per-window DP-SGD on a seq2seq forecaster costs
+    ~25 min/round at bench scale (measured 2026-09-04: decoder rollouts make per-record
+    loops 0.1-0.3 s/record) — a full ε-grid is infeasible on CPU, so this arm runs the
+    reduced footprint recorded in steps_epochs/rounds (labelled pilot) and the matrix
+    records the scaling finding; the user-level rows carry the full-scope grid."""
     n_ch = splits[0]["Xtr"].shape[2]
     plans = []
     for n in clinic_ns:
@@ -100,7 +105,8 @@ def event_level_cell(*, epsilon: float | None, rounds: int, splits: list[dict],
         row = _eval_row(m, splits, horizon, rnd, suite, f"event", seed, epsilon)
         history.append(row)
         if not quiet:
-            print(f"  evP1 {suite}/h{horizon} eps={'off' if epsilon is None else epsilon:g} "
+            eps_txt = "off" if epsilon is None else f"{epsilon:g}"
+            print(f"  evP1 {suite}/h{horizon} eps={eps_txt} "
                   f"r{rnd}: MSE={row['mse']:.4f} (worst {row['mse_worst']:.4f}) "
                   f"acfcorr={row['acf_corr']:.3f}")
     return {"level": "event", "suite": suite, "horizon": horizon, "target_epsilon": epsilon,
@@ -123,7 +129,7 @@ def user_level_cell(*, epsilon: float | None, rounds: int, splits: list[dict],
         replies = []
         for k2, s in enumerate(splits):
             m = GRUForecaster(n_ch, horizon); m.load_param_vector(vec.clone())
-            out = forecast_local(m, s["Xtr"], s["ytr"], epochs=1, lr=1e-3, batch=64,
+            out = forecast_local(m, s["Xtr"], s["ytr"], epochs=1, lr=1e-3, batch=256,
                                  seed=seed * 17 + k2 * 13 + rnd)
             delta = out - vec
             norm = float(delta.norm())
@@ -141,7 +147,8 @@ def user_level_cell(*, epsilon: float | None, rounds: int, splits: list[dict],
         row = _eval_row(m, splits, horizon, rnd, suite, "user", seed, epsilon)
         history.append(row)
         if not quiet:
-            print(f"  usP1 {suite}/h{horizon} eps={'off' if epsilon is None else epsilon:g} "
+            eps_txt = "off" if epsilon is None else f"{epsilon:g}"
+            print(f"  usP1 {suite}/h{horizon} eps={eps_txt} "
                   f"r{rnd}: MSE={row['mse']:.4f} (worst {row['mse_worst']:.4f})")
     return {"level": "user", "suite": suite, "horizon": horizon, "target_epsilon": epsilon,
             "seed": seed, "client_sigma": sigma, "clip_norm": clip,
@@ -179,7 +186,7 @@ def run_forecasting_p1(*, seeds=(42,), quiet: bool = False) -> list[dict]:
         splits = [s for s in splits if len(s["ytr"]) and len(s["yte"])]
         ns = [len(s["ytr"]) for s in splits]
         for eps in (None, 0.5, 1.0, 2.0, 4.0, 8.0):
-            rows.append(event_level_cell(epsilon=eps, rounds=5, splits=splits, clinic_ns=ns,
+            rows.append(event_level_cell(epsilon=eps, rounds=3, splits=splits, clinic_ns=ns,
                                          suite="weather", horizon=96, seed=seed, quiet=quiet))
             RESULTS.write_text(json.dumps({"arm": "P1 forecasting: event-level (weather/h96 pilot) + user-level (3 suites)",
                                            "rows": rows}, indent=2))
@@ -191,7 +198,7 @@ def run_forecasting_p1(*, seeds=(42,), quiet: bool = False) -> list[dict]:
             splits = [s for s in splits if len(s["ytr"]) and len(s["yte"])]
             ns = [len(s["ytr"]) for s in splits]
             for eps in (None, 0.5, 1.0, 2.0, 4.0, 8.0):
-                rows.append(user_level_cell(epsilon=eps, rounds=5, splits=splits, clinic_ns=ns,
+                rows.append(user_level_cell(epsilon=eps, rounds=3, splits=splits, clinic_ns=ns,
                                             suite=suite, horizon=96, seed=seed, quiet=quiet))
                 RESULTS.write_text(json.dumps({"arm": "P1 forecasting: event-level (weather/h96 pilot) + user-level (3 suites)",
                                                "rows": rows}, indent=2))

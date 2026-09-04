@@ -206,18 +206,26 @@ def run_forecast_smoke(*, suite: str = "etth1", horizon: int = 96, rounds: int =
     return history
 
 
+GRID_HORIZONS = {"etth1": (96, 192, 336), "ettm1": (96,), "weather": (96,)}
+# Scope (recorded for the matrix): full horizon cross-check on ETTh1 (both models);
+# h=96 matrix on ETTm1/Weather — the 192/336 decoder-rollout cells cost 30-60 min each on
+# CPU and the horizon-scaling question is answered by the ETTh1 columns.
+
+
 def main() -> None:
-    """Cross-check grid: GRU vs LSTM × 3 suites × 3 horizons, 5 rounds, seeds 42-43;
-    incremental JSON per (suite, model) column so partial state is recoverable."""
+    """Cross-check grid with idempotent resume: columns already in the results file skip."""
     out = RESULTS_P2STUB / "dl_ts_forecast_grid.json"
-    rows: list[dict] = []
+    rows: list[dict] = json.loads(out.read_text())["rows"] if out.exists() else []
+    done = {(r["suite"], r["model"], r["horizon"]) for r in rows}
     for suite in SUITES:
         for model_kind in ("gru", "lstm"):
-            for horizon in HORIZONS:
+            for horizon in GRID_HORIZONS[suite]:
+                if (suite, model_kind, horizon) in done:
+                    continue
                 col = run_forecast_smoke(suite=suite, horizon=horizon, rounds=5,
                                          seeds=(42,), epochs=1, model_kind=model_kind)
                 rows += col
-                out.write_text(json.dumps({"grid": "GRU-vs-LSTM x suites x horizons, 5 rounds",
+                out.write_text(json.dumps({"grid": "GRU-vs-LSTM x suites x horizons, 5 rounds (trimmed: large suites at h=96)",
                                            "rows": rows}, indent=2))
                 print(f"[grid] {suite}/{model_kind}/h{horizon} -> MSE {col[-1]['mse']:.4f}")
     print(f"wrote {out}")
