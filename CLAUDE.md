@@ -9,6 +9,18 @@
 
 ---
 
+## 0a. Branch charter — main
+
+The frozen-infrastructure branch: the Flower app, the runners, the V1 data contract, the
+published baselines, and the L0–L6 privacy stack as documented in `docs/PRIVACY.md`. Changes
+arrive only as reviewed merges from `dev` (README "Branches" table). This CLAUDE.md — this
+section aside — is the canonical text; every sibling branch carries its own §0a charter on top
+(`dev`, `experiment/tabular`, `experiment/image`, `experiment/timeseries`,
+`experiment/privacy-protocol` (stale by policy), `research/privacy-dl-ts` (branch-local rule-2
+waiver; see its charter)).
+
+---
+
 ## 0. Immutable constraints — DO NOT VIOLATE (read first)
 
 > 🔒 **These are non-negotiable project invariants.** They override convenience, performance, and
