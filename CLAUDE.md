@@ -9,6 +9,24 @@
 
 ---
 
+## 0a. Branch charter — experiment/image
+
+The dermoscopy-image track. Dataset: MedMNIST DermaMNIST (28×28 in use; the 64×64 payload is on
+disk) — provenance, checksums, and the CC BY-NC 4.0 research-only terms in
+`data/external/SOURCES.md`. Mapper: `data/external/dermamnist_to_clinics.py` →
+`data/clinics_dermamnist/` — 10 Dirichlet label-skewed pseudo-practices, binary
+melanoma-vs-rest, ≥5-positives-per-clinic guard, accepted seed 45. Track notebook:
+`notebooks/06_dermamnist_melanoma.ipynb` (executed; AUROC band 0.61–0.70 over 15 FedAvg rounds).
+First TODOs: local-epoch / learning-rate scheduling against the round-to-round oscillation, then
+FedProx μ.
+
+All rules in this file bind unmodified — rule 2 included: the model is logistic regression over
+flattened pixels. Labels dispatch through `to_xy`'s generic branch (`melanoma`); scaling stays
+the per-client StandardScaler. The 7-class label and any non-linear image model are consortium
+decisions (see `research/privacy-dl-ts` for the sanctioned DL sandbox), not track work.
+
+---
+
 ## 0. Immutable constraints — DO NOT VIOLATE (read first)
 
 > 🔒 **These are non-negotiable project invariants.** They override convenience, performance, and
