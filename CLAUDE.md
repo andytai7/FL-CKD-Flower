@@ -21,9 +21,18 @@ pseudo-practices (accepted seed 48), 309 features per recording (300-bin wavefor
 TODOs: sensitivity at a fixed operating point instead of the 0.5 threshold; band-limited or
 higher-resolution profile features; more local epochs; FedProx μ against the skewed shards.
 
-All rules in this file bind unmodified — rule 2 included: binary logistic regression over the
-309-column feature frame. The 4-class rhythm target and any sequence model are consortium
-decisions (`research/privacy-dl-ts` is the sanctioned DL sandbox), not track work.
+All rules in this file bind unmodified — with one **dated, user-directed, track-local waiver
+(2026-09-04)**: rule 2 (logreg-only) is waived **for the research tree only** so this track can
+run deep learning. The deployable paths (`server_app.py`, `client_app.py`, the Flower App
+Bundle) stay logistic regression, period. The DL benchmark stack lives at
+`research/privacy-dl-ts/` (design contract: `research/privacy-dl-ts/README.md`):
+**model = RNN family** — LSTM classification arm, GRU seq2seq forecasting arm (PatchTST is an
+optional attention ablation, not the benchmark model); **privacy model for this space = user-level
+(per-patient-trajectory) differential privacy with RDP accounting**, with event-level
+(sliding-window) DP as the measured contrast arm — sequences make trajectory-level protection the
+honest unit; FedCT consensus is the gradient-free alternative, SecAgg+ the wire layer, the
+verified-hybrid SecAgg+DDG+norm-proof arm the malicious-server posture. Rules 1 (Flower-only) and
+8 (Strategy subclasses) still bind; torch enters as the uv-managed optional `dl` extra (rule 4).
 
 ---
 
