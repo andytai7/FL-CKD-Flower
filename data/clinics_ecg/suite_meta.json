@@ -26,6 +26,7 @@
     "num_clinics": 10
   },
   "note": "No patient/site keys at this payload level (one recording per subject); federation is simulated. PhysioNet open access.",
+  "seq_view": "data/clinics_ecg_seq/ (same rows, same partition \u2014 LSTM input)",
   "clinics": [
     {
       "clinic_id": 0,
