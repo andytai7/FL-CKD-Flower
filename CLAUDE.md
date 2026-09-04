@@ -25,7 +25,10 @@ All rules in this file bind unmodified — with one **dated, user-directed, trac
 run deep learning. The deployable paths (`server_app.py`, `client_app.py`, the Flower App
 Bundle) stay logistic regression, period. The DL benchmark stack lives at
 `research/privacy-dl-image/` (design contract: `research/privacy-dl-image/README.md`):
-**FedAvg remains the transport**; the model becomes a small CNN (CNN-S ≈28k params reference
+**weight-sharing transport: FedProx (μ=0.1) is the default** (measured: FedAvg parity-oscillates
+on the pixel-feature proxy, drawdown 0.229 vs 0.219, and FedProx lifts the worst practice
++0.072 AUROC — evidence in `research/privacy-dl-image/README.md`); FedAvg stays as the
+comparator arm in every matrix; the model becomes a small CNN (CNN-S ≈28k params reference
 arm, CNN-M ResNet-lite ≈1.5M scaling probe) over 3×28×28 / 3×64×64 DermaMNIST; the privacy model
 for this space is **per-image record-level DP-SGD** (RDP-composed) as the baseline guarantee,
 benchmarked against FedCT consensus (gradients never leave clinics — the MIA-sensitive

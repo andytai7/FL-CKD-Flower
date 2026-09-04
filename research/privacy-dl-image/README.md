@@ -1,13 +1,32 @@
 # Deep-Learning Privacy Benchmark — Dermoscopy Images (DermaMNIST)
 
-Design contract for the image data kind (user-directed, 2026-09-04): the federation stays
-**FedAvg** (Flower `Strategy` subclass for anything custom — rules 1/8), the model class moves
-from logistic-regression-over-pixels to a **small CNN** (track-local rule-2 waiver in
-`CLAUDE.md` §0a), and privacy is provided by the protocol family that imaging actually needs —
+Design contract for the image data kind (user-directed, 2026-09-04): the federation is
+**weight-sharing over Flower's real strategies** (rules 1/8), the model class moves from
+logistic-regression-over-pixels to a **small CNN** (track-local rule-2 waiver in `CLAUDE.md`
+§0a), and privacy is provided by the protocol family that imaging actually needs —
 **per-image record-level DP-SGD** as the baseline guarantee — benchmarked against the
 gradient-free alternative (FedCT) and the aggregation-security layers (SecAgg+, verified
 hybrid). Scope: this branch (`experiment/image`) only; nothing here is imported by the
 deployable tabular paths, which stay logreg.
+
+**Transport choice — measured, not assumed (2026-09-04).** The default aggregator on this track
+is **FedProx (μ=0.1)**, with **FedAvg kept as a comparator row** in every matrix. Evidence
+(shared-learner logreg protocol bench, `run_simulation(protocol=…, clinics_dir=
+data/clinics_dermamnist)`, 15 rounds; numpy full-batch GD learner at lr 0.5 — absolute levels
+understate the sklearn production learner of notebook 06, the comparison is within-bench):
+
+| Protocol | r15 AUROC | r15 worst-practice AUROC | max round-to-round drawdown | behavior |
+|---|---|---|---|---|
+| FedAvg | 0.491 | 0.398 | **0.229** | severe parity oscillation (even ≈0.65 / odd ≈0.49) — client-drift pathology under Dirichlet label skew on 2,352 unscaled pixel features |
+| FedProx μ=0.1 | 0.552 | 0.470 | 0.219 | oscillation damped; troughs rise monotonically (0.466→0.552); +0.072 on the *worst* clinic — the fairness metric (rule 5) benefits most |
+
+Non-reasons the choice is safe: the proximal term is *local-objective-only* — clip-then-average
+aggregation is unchanged, so record-level DP accounting and SecAgg+ compose over FedProx
+identically to FedAvg (no privacy or wire-security cost). Under CNNs (non-convex, more local
+steps) drift should worsen further; if FedProx alone cannot hold the curve, the next arms —
+sanctioned as `Strategy` subclasses in `models/protocols/` — are **FedAvgM (server momentum,
+targets exactly this oscillation)** and SCAFFOLD (control-variate drift correction, at 2×
+server state). Ensemble/consensus alternatives are covered by the P3 FedCT arm.
 
 Design goals:
 
