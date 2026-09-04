@@ -90,6 +90,29 @@ class LSTMClassifier(ParamVectorMixin, nn.Module):
         return self.head(pooled).squeeze(-1)
 
 
+class LSTMForecaster(ParamVectorMixin, nn.Module):
+    """GRU-Fcst's LSTM cross-check twin: encoder LSTM over the window → LSTMCell zero-input
+    decoder (identical interface + decoder contract; forward: (B, in_len, C) →
+    (B, horizon, out_channels)). Parameter count ≈ GRU × (4/3)."""
+
+    def __init__(self, channels: int, horizon: int, out_channels: int = 1,
+                 hidden: int = 64, layers: int = 1):
+        super().__init__()
+        self.horizon, self.out_channels = horizon, out_channels
+        self.encoder = nn.LSTM(channels, hidden, num_layers=layers, batch_first=True)
+        self.cell = nn.LSTMCell(hidden, hidden)
+        self.head = nn.Linear(hidden, out_channels)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        _, (h, c) = self.encoder(x)            # h, c: (layers, B, H)
+        hs, cs = h[-1], c[-1]                  # (B, H)
+        outs = []
+        for _ in range(self.horizon):
+            hs, cs = self.cell(hs, (hs, cs))   # zero-input decoder step (hs doubles as input)
+            outs.append(self.head(hs))         # (B, out_c)
+        return torch.stack(outs, dim=1)        # (B, horizon, out_c)
+
+
 class GRUForecaster(ParamVectorMixin, nn.Module):
     """THE forecasting arm: GRU encoder → horizon decoder.
 
