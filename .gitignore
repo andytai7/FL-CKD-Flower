@@ -18,6 +18,9 @@ data/external/synthea/
 data/external/uci_ckd/
 data/external/dermamnist/
 data/external/ecg_cinc2017/
+data/external/ett/
+data/external/weather/
+data/clinics_forecast/
 # Flower App Bundles produced by `flwr build` / `flwr run`.
 *.fab
 # Deployment secrets/keys (created by docs/DEPLOYMENT.md's openssl steps) and run-time artifacts —

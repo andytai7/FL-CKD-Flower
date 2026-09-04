@@ -12,6 +12,8 @@ record that lets anyone rebuild the folder.
 | Synthea sample (FHIR R4 bundles) | `data/external/synthea/fhir_sample/` | Apache-2.0 (MITRE) |
 | MedMNIST DermaMNIST 28/64 (HAM10000-derived) | `data/external/dermamnist/` | CC BY-NC 4.0 (inherited from HAM10000 — research use only) |
 | PhysioNet CinC Challenge 2017 (single-lead ECG, AF) | `data/external/ecg_cinc2017/` | PhysioNet open access, no credential required |
+| ETT-small ETTh1 / ETTm1 (Informer release) | `data/external/ett/` | CC BY 4.0 per ETDataset repo |
+| Weather (Autoformer release, 21 channels) | `data/external/weather/` | BSD-3 per Jena weather / thuml Time-Series-Library mirror |
 
 ## UCI CKD — dataset 336
 
@@ -71,3 +73,25 @@ Base URL pattern: `https://wwwn.cdc.gov/nchs/data/nhanes/public/<cycle-start>/da
 - Target for the `experiment/timeseries` track: atrial-fibrillation screening (binary A vs rest,
   or 4-class rhythm). Primary-care-appropriate modality: Kardia devices are used in GP AF
   screening programmes.
+
+## ETT-small (downloaded 2026-09-04)
+
+- Canonical raw CSVs from `https://raw.githubusercontent.com/zhouhaoyi/ETDataset/main/ETT-small/`:
+  `ETTh1.csv` (2.6 MB, 17 420 hourly rows, 2016-07-01→2018-06-26) sha256
+  `f18de3ad269cef59bb07b5438d79bb3042d3be49bdeecf01c1cd6d29695ee066`;
+  `ETTm1.csv` (10.4 MB, 69 680 15-min rows) sha256
+  `6ce1759b1a18e3328421d5d75fadcb316c449fcd7cec32820c8dafda71986c9e`.
+- 7 channels (`HUFL,HULL,MUFL,MULL,LUFL,LULL,OT`); benchmark target = `OT` (oil temperature).
+- Benchmark role (`research/privacy-dl-ts`): input-96 → horizon-96/192/336 forecasting under the
+  event/user-level DP contrast; federation simulated over month-Dirichlet window shards
+  (`data/external/forecast_to_seq_clinics.py`).
+
+## Weather (downloaded 2026-09-04)
+
+- Mirror of the Autoformer release at thuml/Time-Series-Library:
+  `https://huggingface.co/datasets/thuml/Time-Series-Library/resolve/main/weather/weather.csv`
+  (8.4 MB, 52 696 10-min rows, 21 channels incl. `OT`) sha256
+  `34ee981d07313e51da2a50bb600072c8ae4a69cb4b0651f4cb93a069d7a2ba63`.
+  Header has mojibake (`W/m�`, `�mol`) on three columns — passed through as-is, columns addressed
+  positionally. Benchmark target = all channels (multivariate forecasting).
+- Benchmark role: the seasonality-stress arm of the same window-shard forecasting suites.
