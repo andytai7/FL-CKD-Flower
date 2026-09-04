@@ -9,6 +9,23 @@
 
 ---
 
+## 0a. Branch charter — research/privacy-dl-ts
+
+The deep-learning × privacy-preserving-FL **research benchmark** branch (user-directed,
+2026-09-04). The contract is [`research/privacy-dl-ts/README.md`](research/privacy-dl-ts/README.md):
+four paradigms (gradient-space DP at event/user level; SecAgg at scale with FastSecAgg /
+LightSecAgg cost benchmarking against Flower's SecAgg+; FedCT noisy hard-label consensus;
+verified hybrid SecAgg + local DP) across LSTM/GRU/PatchTST on the in-repo CinC 2017 ECG cohort
+(classification) and ETT/Weather (forecasting).
+
+**Branch-local scope override (dated, user-directed):** rule 2 (logreg-only) is **waived on this
+branch only**. Rules 1 and 8 still bind: Flower is the only federation transport; every protocol
+is a `Strategy` subclass. `torch` enters as the uv-managed optional `dl` extra (rule 4) when the
+implementation phase starts. Nothing from this branch merges to `main`/`dev` absent a
+consortium-level re-scoping of rule 2. Everything else in this file applies unchanged.
+
+---
+
 ## 0. Immutable constraints — DO NOT VIOLATE (read first)
 
 > 🔒 **These are non-negotiable project invariants.** They override convenience, performance, and
