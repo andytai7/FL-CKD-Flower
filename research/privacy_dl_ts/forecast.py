@@ -56,30 +56,21 @@ def load_suite(suite: str, horizon: int) -> list[dict]:
     return clinics
 
 
-def normalise(clinics: list[dict], train_frac: float = 0.70) -> tuple[np.ndarray, np.ndarray]:
-    """Per-suite channel stats from the pooled TRAIN segment only."""
-    pooled = []
-    for c in clinics:
-        t = c["series"].shape[0]
-        cut = int(train_frac * t)
-        pooled.append(c["series"][:cut])
-    mat = np.concatenate(pooled)
-    mu = mat.mean(axis=0, keepdims=True)
-    sd = mat.std(axis=0, keepdims=True) + 1e-8
-    return mu, sd
+TARGET_CHANNEL = {"etth1": -1, "ettm1": -1, "weather": 1}  # OT (last) for ETT, T for weather
 
 
 def windows_for(clinic: dict, start: int, end: int, horizon: int,
-                mu: np.ndarray, sd: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Windows whose start lies in [start, end); x=(96,) history, y=(h,) target of channel 0.
-    Normalisation applied to the full series first (train-only stats)."""
+                mu: np.ndarray, sd: np.ndarray, target_ch: int) -> tuple[np.ndarray, np.ndarray]:
+    """Windows whose start lies in [start, end); x=(96,) history, y=(h,) target channel.
+    Normalisation applied to the full series first (own-train stats)."""
     series = (clinic["series"] - mu) / sd
+    ch = target_ch if target_ch >= 0 else series.shape[1] + target_ch
     mask = (clinic["starts"] >= start) & (clinic["starts"] + horizon <= end + IN_LEN)
     xs, ys = [], []
     for s in clinic["starts"][mask]:
         x = series[s : s + IN_LEN]                          # (96, C)
-        y = series[s + IN_LEN : s + IN_LEN + horizon, 0:1]  # (h, 1) — channel 0 target
-        if x.shape[0] == IN_LEN and y.shape[0] == horizon:
+        y = series[s + IN_LEN : s + IN_LEN + horizon, ch : ch + 1]
+        if y.shape[0] == horizon and x.shape[0] == IN_LEN:
             xs.append(x); ys.append(y)
     if not xs:
         return (np.zeros((0, IN_LEN, series.shape[1]), np.float32),
@@ -87,15 +78,20 @@ def windows_for(clinic: dict, start: int, end: int, horizon: int,
     return np.stack(xs).astype(np.float32), np.stack(ys).astype(np.float32)
 
 
-def split_clinic(clinic: dict, horizon: int, mu, sd,
+def split_clinic(clinic: dict, horizon: int, suite: str = "etth1",
                  train_frac: float = 0.70, test_frac: float = 0.15) -> dict:
-    """Chronological 70/15/15 with a `horizon` purge before the test segment's FIRST window
-    (windows indexed by their start; a window reads IN_LEN back but never forward)."""
+    """Chronological 70/15/15 with a `horizon` purge before the test segment's FIRST window;
+    z-normalisation on THE CLINIC'S OWN train segment (the partition's documented leak-free
+    convention — never pooled across clinics, never touching the test span)."""
     t = clinic["series"].shape[0]
     cut_tr = int(train_frac * t)
     test_start = int((train_frac + test_frac) * t)          # val segment lands in the middle
-    Xtr, ytr = windows_for(clinic, 0, cut_tr, horizon, mu, sd)
-    Xte, yte = windows_for(clinic, test_start, t, horizon, mu, sd)
+    tr = clinic["series"][:cut_tr]
+    mu = tr.mean(axis=0, keepdims=True)
+    sd = tr.std(axis=0, keepdims=True) + 1e-8
+    ch = TARGET_CHANNEL[suite]
+    Xtr, ytr = windows_for(clinic, 0, cut_tr, horizon, mu, sd, ch)
+    Xte, yte = windows_for(clinic, test_start, t, horizon, mu, sd, ch)
     return {"Xtr": Xtr, "ytr": ytr, "Xte": Xte, "yte": yte}
 
 
@@ -157,7 +153,6 @@ def run_forecast_smoke(*, suite: str = "etth1", horizon: int = 96, rounds: int =
                        transport: str = "fedavg", quiet: bool = False) -> list[dict]:
     """GRU/LSTM over one suite; dual-level MSE/MAE + ACF fidelity per round."""
     clinics = load_suite(suite, horizon)
-    mu, sd = normalise(clinics)
     n_ch = clinics[0]["series"].shape[1]
     make = (lambda: GRUForecaster(n_ch, horizon)) if model_kind == "gru" else \
         (lambda: LSTMForecaster(n_ch, horizon))
@@ -167,7 +162,7 @@ def run_forecast_smoke(*, suite: str = "etth1", horizon: int = 96, rounds: int =
         fraction_train=1.0, fraction_evaluate=1.0)
     history: list[dict] = []
     for seed in seeds:
-        splits = [split_clinic(c, horizon, mu, sd) for c in clinics]
+        splits = [split_clinic(c, horizon, suite) for c in clinics]
         splits = [s for s in splits if len(s["ytr"]) and len(s["yte"])]
         model = make(); torch.manual_seed(seed)
         vec = model.param_vector()
@@ -212,14 +207,19 @@ def run_forecast_smoke(*, suite: str = "etth1", horizon: int = 96, rounds: int =
 
 
 def main() -> None:
-    """Pilot cross-check grid: GRU vs LSTM × ETTh1 × h=96 (5 rounds, seed 42)."""
-    rows = []
-    for mk in ("gru", "lstm"):
-        rows += run_forecast_smoke(suite="etth1", horizon=96, rounds=5, seeds=(42,),
-                                   epochs=1, model_kind=mk)
-    out = RESULTS_P2STUB / "dl_ts_forecast_pilot.json"
-    out.write_text(json.dumps({"pilot": "GRU-vs-LSTM on ETTh1 h=96 (5 rounds, seed 42)",
-                               "rows": rows}, indent=2))
+    """Cross-check grid: GRU vs LSTM × 3 suites × 3 horizons, 5 rounds, seeds 42-43;
+    incremental JSON per (suite, model) column so partial state is recoverable."""
+    out = RESULTS_P2STUB / "dl_ts_forecast_grid.json"
+    rows: list[dict] = []
+    for suite in SUITES:
+        for model_kind in ("gru", "lstm"):
+            for horizon in HORIZONS:
+                col = run_forecast_smoke(suite=suite, horizon=horizon, rounds=5,
+                                         seeds=(42,), epochs=1, model_kind=model_kind)
+                rows += col
+                out.write_text(json.dumps({"grid": "GRU-vs-LSTM x suites x horizons, 5 rounds",
+                                           "rows": rows}, indent=2))
+                print(f"[grid] {suite}/{model_kind}/h{horizon} -> MSE {col[-1]['mse']:.4f}")
     print(f"wrote {out}")
 
 
