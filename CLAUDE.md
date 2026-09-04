@@ -17,10 +17,12 @@ arrive only as reviewed merges from `dev` (README "Branches" table).
 
 **Topology rule (user-directed, 2026-09-04): branches name data kinds — never methodologies.**
 `experiment/tabular` (CKD clinics + mapped external cohorts), `experiment/image` (DermaMNIST),
-`experiment/timeseries` (CinC 2017 ECG). The privacy/FL methodologies (P1–P4 of the deep
-time-series benchmark: gradient-space DP, SecAgg at scale, FedCT consensus, verified hybrid) are
-**shared code in the toolkit on `dev`** under `research/privacy-dl-ts/` — every data track runs
-the same methodology matrix over its own data. `experiment/privacy-protocol` stays stale by
+`experiment/timeseries` (CinC 2017 ECG). Methodologies are **categorized for their data kind and
+committed on the matching data branch's `research/` tree** — the image benchmark at
+`research/privacy-dl-image/` (CNN arms over FedAvg; per-image record-level DP-SGD; FedCT /
+SecAgg+ / verified-hybrid arms), the time-series benchmark at `research/privacy-dl-ts/` (RNN
+arms — LSTM/GRU; user-level trajectory DP with RDP + event-level contrast). `dev` is
+integration-only and carries no methodology code. `experiment/privacy-protocol` stays stale by
 policy.
 
 This CLAUDE.md is the canonical text; sibling branches carry their own §0a charters, and merges
