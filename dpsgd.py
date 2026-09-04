@@ -252,6 +252,7 @@ def run_epsilon_sweep(
     lr: float,
     seeds: tuple,
     planner,
+    clinics_dir: str | None = None,
 ) -> list[dict]:
     """Utility at each target ε under the orchestrator's standardised plans, repeated over seeds.
 
@@ -261,13 +262,17 @@ def run_epsilon_sweep(
     the train splits, so train N is what sets both q and T — not `num_examples` vs test confusion
     would silently mis-set the accounted budget.
 
+    `clinics_dir` selects the on-disk practice frames (default `data/clinics/`, the V1 tabular
+    contract; mapper-emitted tracks pass e.g. `data/clinics_ecg` / `data/clinics_dermamnist`,
+    which dispatch through `to_xy`'s generic branch — same DP-SGD semantics, new data kind).
+
     A leading `None` row is prepended as the σ=0 clipped reference (like `LOCAL_DP_EPSILONS`' None
     row in privacy.py). Locals are prepared once per seed and shared across ε cells of that seed, so
     cells differ only in noise, not in data splits. Result rows mirror privacy.py's sweep rows,
     plus `plan_seed0` — the executed plan for the first seed, kept in the row so every reported
     number is auditable against concrete (batch_size, σ, steps).
     """
-    frames = load_clinic_frames()
+    frames = load_clinic_frames(clinics_dir)
     epsilons = (None, *target_epsilons)
     locals_by_seed = {seed: prepare_practices(frames, seed) for seed in seeds}
 

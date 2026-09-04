@@ -36,6 +36,9 @@ modality's structural fit), SecAgg+ cost-profiled at CNN wire sizes, and the ver
 (SecAgg + distributed discrete Gaussian + norm proofs) arm for the malicious-server posture.
 MIA advantage is a first-class metric on every arm. Rules 1 (Flower-only) and 8 (Strategy
 subclasses) still bind; torch enters as the uv-managed optional `dl` extra (rule 4).
+---
+
+## 0. Immutable constraints — DO NOT VIOLATE (read first)
 
 ---
 
