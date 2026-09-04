@@ -20,10 +20,19 @@ melanoma-vs-rest, ≥5-positives-per-clinic guard, accepted seed 45. Track noteb
 First TODOs: local-epoch / learning-rate scheduling against the round-to-round oscillation, then
 FedProx μ.
 
-All rules in this file bind unmodified — rule 2 included: the model is logistic regression over
-flattened pixels. Labels dispatch through `to_xy`'s generic branch (`melanoma`); scaling stays
-the per-client StandardScaler. The 7-class label and any non-linear image model are consortium
-decisions (see `research/privacy-dl-ts` for the sanctioned DL sandbox), not track work.
+All rules in this file bind unmodified — with one **dated, user-directed, track-local waiver
+(2026-09-04)**: rule 2 (logreg-only) is waived **for the research tree only** so this track can
+run deep learning. The deployable paths (`server_app.py`, `client_app.py`, the Flower App
+Bundle) stay logistic regression, period. The DL benchmark stack lives at
+`research/privacy-dl-image/` (design contract: `research/privacy-dl-image/README.md`):
+**FedAvg remains the transport**; the model becomes a small CNN (CNN-S ≈28k params reference
+arm, CNN-M ResNet-lite ≈1.5M scaling probe) over 3×28×28 / 3×64×64 DermaMNIST; the privacy model
+for this space is **per-image record-level DP-SGD** (RDP-composed) as the baseline guarantee,
+benchmarked against FedCT consensus (gradients never leave clinics — the MIA-sensitive
+modality's structural fit), SecAgg+ cost-profiled at CNN wire sizes, and the verified-hybrid
+(SecAgg + distributed discrete Gaussian + norm proofs) arm for the malicious-server posture.
+MIA advantage is a first-class metric on every arm. Rules 1 (Flower-only) and 8 (Strategy
+subclasses) still bind; torch enters as the uv-managed optional `dl` extra (rule 4).
 
 ---
 
