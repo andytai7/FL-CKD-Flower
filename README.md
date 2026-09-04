@@ -331,6 +331,7 @@ each data kind gets its own `experiment/` track.
 | `experiment/image` | Dermoscopy image track — MedMNIST DermaMNIST (skin-lesion diagnosis, a GP triage task); raw payload under `data/external/dermamnist/` | Same pattern |
 | `experiment/timeseries` | Single-lead ECG track — PhysioNet CinC Challenge 2017 (atrial-fibrillation screening); raw payload under `data/external/ecg_cinc2017/` | Same pattern |
 | `experiment/privacy-protocol` | Legacy privacy-protocol lab bench (T2.3 → MS4); stays stale at the frozen commit until protocol work resumes | Finalize there, then merge back |
+| `research/privacy-dl-ts` | DL × privacy benchmark program (design doc + blueprints; LSTM/GRU/PatchTST allowed **on that branch only** per its dated rule-2 waiver — see its CLAUDE.md charter and `research/privacy-dl-ts/README.md`) | Long-lived; no merge to `main`/`dev` without a consortium rule-2 re-scoping |
 
 Rules of the road:
 
