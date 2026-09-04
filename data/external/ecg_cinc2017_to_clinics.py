@@ -54,6 +54,22 @@ BAND = (0.5, 40.0)   # Hz window for the spectral features
 STAT_COLS = ["duration_s", "amp_mean", "amp_std", "amp_rms", "amp_skew", "amp_kurt",
              "dom_freq_hz", "dom_power_share", "spec_entropy"]
 
+SEQ_LEN = 4096  # fixed-length resampled trace the LSTM consumes (~13.65 s at 300 Hz native)
+
+
+def _seq_view(xf: np.ndarray) -> np.ndarray:
+    """Fixed-length LSTM input: normalised-time linear resample to SEQ_LEN, per-trace z-norm.
+
+    Traces span 9-60 s at 300 Hz; a normalised-time resample keeps every recording (no crop/pad
+    choice to justify) and matches the profile-resample policy in `_waveform_features`.
+    Per-trace z-normalisation removes gain/baseline wander between AliveCor devices — rhythm
+    carries the AF evidence; raw amplitude statistics remain in STAT_COLS for the feature view.
+    """
+    z = (xf - xf.mean()) / (xf.std() + 1e-8)
+    return np.interp(
+        np.linspace(0, len(xf) - 1, SEQ_LEN), np.arange(len(xf)), z
+    ).astype("float32")
+
 
 def _waveform_features(x: np.ndarray) -> dict[str, float]:
     """Deterministic per-trace features (no cross-recording statistics)."""
@@ -96,24 +112,27 @@ def _waveform_features(x: np.ndarray) -> dict[str, float]:
     return feats
 
 
-def load_frame(raw_dir: Path = RAW_DIR) -> pd.DataFrame:
-    """Parse every recording + REFERENCE.csv into a labelled feature frame.
+def load_frame(raw_dir: Path = RAW_DIR) -> tuple[pd.DataFrame, np.ndarray]:
+    """Parse every recording + REFERENCE.csv into (labelled feature frame, sequence matrix).
 
     Labels: A -> 1 (AF); N and O -> 0; ~ (noisy) dropped — a physiological signal quality
-    exclusion, documented in suite_meta.json.
+    exclusion, documented in suite_meta.json. The sequence matrix stacks one `_seq_view` per
+    recording, float32 (n, SEQ_LEN), in the SAME row order as the frame — the Dirichlet
+    partition applies to both views identically.
     """
     refs = pd.read_csv(raw_dir / "REFERENCE.csv", header=None, names=["record", "ref"])
     refs = refs[refs["ref"] != "~"].reset_index(drop=True)
-    rows = []
+    rows, seqs = [], []
     for i, rec in enumerate(refs.itertuples(index=False)):
         x = scipy.io.loadmat(raw_dir / f"{rec.record}.mat")["val"].ravel()
         feats = _waveform_features(x)
         feats[LABEL] = int(rec.ref == "A")
         rows.append(feats)
+        seqs.append(_seq_view(x.astype("float64")))
         if (i + 1) % 1000 == 0:
             print(f"  parsed {i + 1}/{len(refs)} recordings")
     cols = [*STAT_COLS, *[f"w{i:04d}" for i in range(PROFILE_COLS)], LABEL]
-    return pd.DataFrame(rows)[cols]
+    return pd.DataFrame(rows)[cols], np.stack(seqs)
 
 
 def write_clinics(
@@ -131,7 +150,9 @@ def write_clinics(
     """
     out_dir = out_dir or HERE.parent / "clinics_ecg"
     out_dir.mkdir(parents=True, exist_ok=True)
-    df = load_frame()
+    seq_dir = HERE.parent / "clinics_ecg_seq"
+    seq_dir.mkdir(parents=True, exist_ok=True)
+    df, seq = load_frame()
     for attempt in range(100):
         parts = dirichlet_partition(df, num_clinics, alpha, seed + attempt, label_col=LABEL)
         if min(int(df[LABEL].to_numpy()[idx].sum()) for idx in parts) >= min_positives:
@@ -155,19 +176,47 @@ def write_clinics(
                       "num_clinics": num_clinics},
         "note": "No patient/site keys at this payload level (one recording per subject); "
                 "federation is simulated. PhysioNet open access.",
+        "seq_view": "data/clinics_ecg_seq/ (same rows, same partition — LSTM input)",
         "clinics": [],
     }
     combined = []
+    seq_parts = []
     for k, idx in enumerate(parts):
         g = df.iloc[idx].reset_index(drop=True)
         name = f"shard-{k:02d}"
         g.to_csv(out_dir / f"clinic_{k:02d}_{name}.csv", index=False)
         combined.append(g.assign(clinic_id=k, clinic_name=name))
+        np.savez_compressed(
+            seq_dir / f"clinic_{k:02d}_{name}.npz",
+            X=seq[idx], y=df[LABEL].to_numpy()[idx].astype("int64"),
+        )
+        seq_parts.append((k, name, idx))
         meta["clinics"].append({"clinic_id": k, "name": name, "n": len(g),
                                 "af_rate": round(float(g[LABEL].mean()), 4),
                                 "dir": out_dir.name})
+    y_all = df[LABEL].to_numpy().astype("int64")
     pd.concat(combined, ignore_index=True).to_csv(out_dir / "all_clinics.csv", index=False)
+    np.savez_compressed(seq_dir / "all_clinics.npz", X=seq, y=y_all)
     (out_dir / "suite_meta.json").write_text(json.dumps(meta, indent=2))
+
+    seq_meta = {
+        "source": meta["source"],
+        "label": meta["label"],
+        "task": "time series: fixed-length sequences for the track's RNN arms (LSTM/GRU)",
+        "seq_view": {"length": SEQ_LEN, "dtype": "float32",
+                     "resample": "normalised-time linear (np.interp) to SEQ_LEN samples",
+                     "normalisation": "per-trace z-score (gain/baseline-wander removed; "
+                                      "amplitude stats live in the feature view)"},
+        "n_recordings": len(df),
+        "prevalence": meta["prevalence"],
+        "partition": {**meta["partition"],
+                      "note": "BYTE-IDENTICAL row partition to data/clinics_ecg/ (same accepted "
+                              "draw in one mapper run) — feature and sequence views align row for row"},
+        "files": [{"clinic_id": k, "name": name, "file": f"clinic_{k:02d}_{name}.npz",
+                   "n": len(idx)} for k, name, idx in seq_parts],
+        "note": meta["note"],
+    }
+    (seq_dir / "suite_meta.json").write_text(json.dumps(seq_meta, indent=2))
     return meta
 
 
