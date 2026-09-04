@@ -9,6 +9,20 @@
 
 ---
 
+## 0a. Branch charter — dev
+
+Integration branch (the gitflow middle). Starts from `main`'s frozen infrastructure and carries
+the shared groundwork every track needs ahead of any milestone merge. Currently on top of
+`main`: externals provenance + gitignore for DermaMNIST and CinC 2017 (`SOURCES.md`), and the
+generic preprocessing plumbing — `to_xy` generic-label dispatch (`melanoma` / `afib`),
+schema-aware `load_dataframe` validation, `dirichlet_partition(label_col=...)`, data-driven
+model width in `simulate.py` (V1 regression verified: ≈0.795 AUROC unchanged).
+
+All rules bind unmodified. Track branches (`experiment/*`, `research/*`) fork from here and
+merge back here; `main` receives only reviewed merges.
+
+---
+
 ## 0. Immutable constraints — DO NOT VIOLATE (read first)
 
 > 🔒 **These are non-negotiable project invariants.** They override convenience, performance, and
