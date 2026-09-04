@@ -13,11 +13,18 @@
 
 The frozen-infrastructure branch: the Flower app, the runners, the V1 data contract, the
 published baselines, and the L0–L6 privacy stack as documented in `docs/PRIVACY.md`. Changes
-arrive only as reviewed merges from `dev` (README "Branches" table). This CLAUDE.md — this
-section aside — is the canonical text; every sibling branch carries its own §0a charter on top
-(`dev`, `experiment/tabular`, `experiment/image`, `experiment/timeseries`,
-`experiment/privacy-protocol` (stale by policy), `research/privacy-dl-ts` (branch-local rule-2
-waiver; see its charter)).
+arrive only as reviewed merges from `dev` (README "Branches" table).
+
+**Topology rule (user-directed, 2026-09-04): branches name data kinds — never methodologies.**
+`experiment/tabular` (CKD clinics + mapped external cohorts), `experiment/image` (DermaMNIST),
+`experiment/timeseries` (CinC 2017 ECG). The privacy/FL methodologies (P1–P4 of the deep
+time-series benchmark: gradient-space DP, SecAgg at scale, FedCT consensus, verified hybrid) are
+**shared code in the toolkit on `dev`** under `research/privacy-dl-ts/` — every data track runs
+the same methodology matrix over its own data. `experiment/privacy-protocol` stays stale by
+policy.
+
+This CLAUDE.md is the canonical text; sibling branches carry their own §0a charters, and merges
+keep the target branch's charter.
 
 ---
 

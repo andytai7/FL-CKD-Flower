@@ -9,12 +9,14 @@ __pycache__/
 # Generated per-clinic datasets — regenerate with `uv run ckd-clinics`, never committed.
 data/clinics/
 data/clinics_ladder/
-# Raw external payloads (NHANES XPTs, Synthea zips/FHIR bundles, UCI CKD) — re-download via the
-# URLs + checksums in data/external/SOURCES.md, then re-run the data/external/*_to_clinics.py
-# mappers. Only the mappers and SOURCES.md are tracked.
+# Raw external payloads (NHANES XPTs, Synthea zips/FHIR bundles, UCI CKD, DermaMNIST npz,
+# CinC 2017 ECG) — re-download via the URLs + checksums in data/external/SOURCES.md, then
+# re-run the data/external/*_to_clinics.py mappers. Only the mappers and SOURCES.md are tracked.
 data/external/nhanes/
 data/external/synthea/
 data/external/uci_ckd/
+data/external/dermamnist/
+data/external/ecg_cinc2017/
 # Flower App Bundles produced by `flwr build` / `flwr run`.
 *.fab
 # Deployment secrets/keys (created by docs/DEPLOYMENT.md's openssl steps) and run-time artifacts —
