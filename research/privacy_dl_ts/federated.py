@@ -47,14 +47,23 @@ def _split(X: np.ndarray, y: np.ndarray, seed: int, partition_id: int) -> dict:
 
 
 def local_train(model: nn.Module, X: np.ndarray, y: np.ndarray, *, epochs: int = 1,
-                lr: float = 1e-3, batch: int = 64, seed: int = 0) -> torch.Tensor:
-    """One clinic's local step (sanity config): Adam on prevalence-weighted BCE."""
+                lr: float = 1e-3, batch: int = 64, seed: int = 0,
+                proximal_mu: float = 0.0, anchor: torch.Tensor | None = None) -> torch.Tensor:
+    """One clinic's local step (sanity config): Adam on prevalence-weighted BCE
+    (+ optional FedProx proximal pull (μ/2)·‖θ−θ_global‖² toward the round anchor)."""
     torch.manual_seed(seed)
     model.train()
     pos = max(1, int(y.sum()))
     pos_weight = torch.tensor((len(y) - pos) / pos, dtype=torch.float32)
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
+    params = list(model.parameters())
+    anchor_parts = None
+    if proximal_mu and anchor is not None:
+        offs = [0]
+        for p in params:
+            offs.append(offs[-1] + p.numel())
+        anchor_parts = [anchor[offs[i] : offs[i + 1]].view_as(p) for i, p in enumerate(params)]
     idx = np.arange(len(y))
     for _ in range(epochs):
         np.random.default_rng(seed).shuffle(idx)
@@ -63,7 +72,12 @@ def local_train(model: nn.Module, X: np.ndarray, y: np.ndarray, *, epochs: int =
             xb = torch.from_numpy(X[rows])
             yb = torch.from_numpy(y[rows]).float()
             opt.zero_grad(set_to_none=True)
-            loss_fn(model(xb), yb).backward()
+            loss = loss_fn(model(xb), yb)
+            if anchor_parts is not None:
+                loss = loss + 0.5 * proximal_mu * sum(
+                    ((p - a) ** 2).sum() for p, a in zip(params, anchor_parts)
+                )
+            loss.backward()
             opt.step()
     return model.param_vector()
 
@@ -77,12 +91,22 @@ def _eval_probs(model: nn.Module, X: np.ndarray, batch: int = 256) -> np.ndarray
 
 
 def run_fedavg_smoke(*, rounds: int, seeds: tuple[int, ...] = (42,), epochs: int = 1,
-                     downsample: int = 4, quiet: bool = False) -> list[dict]:
-    """FedAvg LSTM over the ECG seq clinics; returns per-round dual-level metric dicts."""
+                     downsample: int = 4, proximal_mu: float = 0.0,
+                     transport: str = "fedavg", momentum_beta: float = 0.6,
+                     quiet: bool = False) -> list[dict]:
+    """Weight-sharing LSTM over the ECG seq clinics. transport ∈ {fedavg, fedavgm (β),
+    fedprox (proximal_mu)}; FedAvg/FedAvgM aggregate through Flower's strategy machinery."""
     clinics = load_seq_clinics(downsample=downsample)
     n_features = SEQ_LEN // downsample
-    strategy = FedAvg(fraction_train=1.0, fraction_evaluate=1.0,
-                      evaluate_metrics_aggr_fn=weighted_and_worst)
+    if transport == "fedavgm":
+        from .strategies import FedAvgM
+
+        strategy = FedAvgM(
+            beta=momentum_beta, fraction_train=1.0, fraction_evaluate=1.0,
+            evaluate_metrics_aggr_fn=weighted_and_worst)
+    else:
+        strategy = FedAvg(fraction_train=1.0, fraction_evaluate=1.0,
+                          evaluate_metrics_aggr_fn=weighted_and_worst)
     history = []
     for seed in seeds:
         splits = [_split(X, y, seed, k) for k, (X, y) in enumerate(clinics)]
@@ -94,6 +118,7 @@ def run_fedavg_smoke(*, rounds: int, seeds: tuple[int, ...] = (42,), epochs: int
             for k, s in enumerate(splits):
                 m = LSTMClassifier(); m.load_param_vector(vec.clone())
                 out_vec = local_train(m, s["Xtr"], s["ytr"], epochs=epochs,
+                                      proximal_mu=proximal_mu, anchor=vec,
                                       seed=seed * 1_000_003 + k * 9_973 + rnd * 91_193)
                 replies.append(train_reply([out_vec.numpy()], len(s["ytr"])))
             with hushed():

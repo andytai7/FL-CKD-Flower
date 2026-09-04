@@ -438,3 +438,20 @@ cited formulas, measured SecAgg+ reference only).
   lifted here to vote-release sensitivity — flagged as the analysis risk item in §3.2).
 - PatchTST — Nie et al., ICLR 2023, arXiv:2211.14730. Norm-verified secure aggregation — ELSA,
   Rathee et al., CCS 2023.
+
+### 2.2 Measured model-suite + transport protocol (2026-09-04)
+
+- **Model suite** (`research/privacy_dl_ts/models.py`, torch-optional `dl` extra):
+  LSTM-Clf 63,425 params (conv stem stride-8 -> L≈128 RNN steps); GRU-Fcst 39,041
+  (zero-init scalar head, step-ahead recurrence); PatchTST ablation probe 432,385.
+  ParamVectorMixin round-trip contract checked at import.
+- **Sanity gate verdict** (target: reproduce the logreg band 0.625 before privacy spend):
+  v1 mean-pool LSTM FAILED (AUROC ~0.53 through r7); mean+max + epochs FAILED (~0.51);
+  conv stem fixed feature dilution; **FedAvgM β=0.6 transport PASSED: r5-r10 0.668 -> 0.716,
+  worst clinic 0.53-0.61**. Comparator rows: FedAvg same-config 0.601 final (peak 0.646 @ r5,
+  mid-run drift), FedProx μ=0.1 0.525 (over-suppressed on these gradient magnitudes).
+  **Transport decision: FedAvgM default on the TS track; FedAvg/FedProx stay comparator rows.**
+- **P1 machinery**: `dpsgd_ts.py` honest per-record clip+Gaussian Poisson DP-SGD
+  (clip-rate audit, FedProx-compatible proximal term) + `p1_spine.py` ε-grid {off,0.5,1,2,4,8}
+  runner with per-clinic standardised plans (σ_k so every clinic composes the SAME target ε);
+  unit-checked budget direction.

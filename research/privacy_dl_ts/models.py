@@ -53,20 +53,40 @@ class ParamVectorMixin:
 
 
 class LSTMClassifier(ParamVectorMixin, nn.Module):
-    """THE classification arm: LSTM hidden 64 × 2 layers, mean-pool over time → logit.
+    """THE classification arm: optional 1-D conv stem → LSTM hidden 64 × 2 → mean+max-pool → logit.
 
     forward(x): x is (B, L, C) — seq clinics are single-lead (C=1).
+
+    Gate history (2026-09-04, both measured on the seq clinics):
+    1. v1 mean-only pooling failed the sanity gate (AUROC ≈0.53 through round 7) — burst-
+       localised AF evidence was diluted by averaging over 1,024 steps.
+    2. mean+max pooling + 3 local epochs still failed (≈0.51 through round 3): 1,024-step BPTT
+       under federated averaging washes out per-round learning before ranking forms.
+    3. So the arm ships with `frontend=True`: Conv1d(1→16, k15, s4)+BN → Conv1d(16→32, k9, s2)
+       shrinks the recurrent part to L/8 ≈ 128 steps (the standard raw-single-lead-ECG stem).
+       The RNN remains the sequence core — RNN pick stands; `frontend=False` reproduces v2 as
+       the documented no-stem ablation row.
     """
 
-    def __init__(self, channels: int = 1, hidden: int = 64, layers: int = 2):
+    def __init__(self, channels: int = 1, hidden: int = 64, layers: int = 2, frontend: bool = True):
         super().__init__()
-        self.rnn = nn.LSTM(channels, hidden, num_layers=layers, batch_first=True,
+        self.frontend = (
+            nn.Sequential(nn.Conv1d(channels, 16, 15, stride=4, padding=7),
+                          nn.BatchNorm1d(16), nn.ReLU(),
+                          nn.Conv1d(16, 32, 9, stride=2, padding=4), nn.ReLU())
+            if frontend else None
+        )
+        in_c = 32 if frontend else channels
+        self.rnn = nn.LSTM(in_c, hidden, num_layers=layers, batch_first=True,
                            dropout=0.0 if layers == 1 else 0.1)
-        self.head = nn.Linear(hidden, 1)
+        self.head = nn.Linear(2 * hidden, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out, _ = self.rnn(x)          # (B, L, H)
-        return self.head(out.mean(dim=1)).squeeze(-1)  # mean-pool over time -> (B,)
+        if self.frontend is not None:
+            x = self.frontend(x.transpose(1, 2)).transpose(1, 2)  # (B, L/8, 32)
+        out, _ = self.rnn(x)          # (B, L', H)
+        pooled = torch.cat([out.mean(dim=1), out.amax(dim=1)], dim=1)  # (B, 2H)
+        return self.head(pooled).squeeze(-1)
 
 
 class GRUForecaster(ParamVectorMixin, nn.Module):
