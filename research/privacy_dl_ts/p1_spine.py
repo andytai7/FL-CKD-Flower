@@ -34,8 +34,11 @@ RESULTS = Path(__file__).resolve().parents[2] / "results" / "dl_ts_p1.json"
 
 def run_cell(*, epsilon: float | None, rounds: int, splits: list[dict], clinic_ns: list[int],
              seed: int, batch: int = 64, steps_epochs: float = 1.0, clip: float = 1.0,
-             lr: float = 0.5, proximal_mu: float = 0.0, quiet: bool = False) -> dict:
-    """One (ε, seed) cell: R rounds of DP-SGD local steps aggregated by real FedAvg."""
+             lr: float = 0.5, proximal_mu: float = 0.0, transport: str = "fedavgm",
+             momentum_beta: float = 0.6, quiet: bool = False) -> dict:
+    """One (ε, seed, transport) cell: R rounds of DP-SGD local steps aggregated by a real
+    Flower strategy (FedAvgM default — the track's measured transport; fedavg and fedprox
+    comparator arms for matrix Q3)."""
     plans = []
     for n in clinic_ns:
         steps = max(1, math.ceil(steps_epochs * n / batch))
@@ -52,11 +55,22 @@ def run_cell(*, epsilon: float | None, rounds: int, splits: list[dict], clinic_n
                       "composed_epsilon": epsilon_rdp(sigma, rounds * steps, 1e-5,
                                                       sampling_probability=q)
                       if epsilon is not None else None})
-    strategy = FedAvg(fraction_train=1.0, fraction_evaluate=1.0,
-                      evaluate_metrics_aggr_fn=weighted_and_worst)
+    if transport == "fedavgm":
+        from flwr.serverapp.strategy import FedAvgM  # flwr built-in (server_lr=1, β below)
+
+        strategy = FedAvgM(server_momentum=momentum_beta, fraction_train=1.0,
+                           fraction_evaluate=1.0,
+                           evaluate_metrics_aggr_fn=weighted_and_worst)
+    else:
+        strategy = FedAvg(fraction_train=1.0, fraction_evaluate=1.0,
+                          evaluate_metrics_aggr_fn=weighted_and_worst)
     model = LSTMClassifier()
     torch.manual_seed(seed)
     vec = model.param_vector()
+    if transport == "fedavgm":  # built-in needs server weights primed before round 1
+        from flwr.common import ArrayRecord
+
+        strategy.current_arrays = ArrayRecord([vec.numpy()])
     history = []
     for rnd in range(1, rounds + 1):
         replies = []
@@ -88,7 +102,8 @@ def run_cell(*, epsilon: float | None, rounds: int, splits: list[dict], clinic_n
             print(f"  eps={eps_txt:<5} round {rnd:>2}: AUROC={row.get('auc', float('nan')):.3f} "
                   f"(worst {row.get('auc_worst', float('nan')):.3f}) clip={row['clip_rate']:.2f}")
     final = history[-1]
-    return {"target_epsilon": epsilon, "seed": seed, "plans": plans,
+    return {"target_epsilon": epsilon, "seed": seed, "transport": transport,
+            "proximal_mu": proximal_mu, "plans": plans,
             "final_auc": float(final.get("auc", np.nan)),
             "final_auc_worst": float(final.get("auc_worst", np.nan)),
             "final_sensitivity": float(final.get("sensitivity", np.nan)),
