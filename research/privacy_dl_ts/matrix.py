@@ -62,7 +62,12 @@ def main() -> None:
                      "aux": {"norm_proofs_ok": r["norm_proofs_ok_all"],
                              "kls_feasible": r["feasible_all"], "scale": r.get("scale")}})
 
+    seen_fc: dict[tuple, dict] = {}
     for r in _load("dl_ts_forecast_grid.json"):
+        key = (r["suite"], r["model"], r["horizon"])
+        if key not in seen_fc or r["round"] > seen_fc[key]["round"]:
+            seen_fc[key] = r
+    for r in seen_fc.values():
         rows.append({"track": "timeseries", "paradigm": "model-crosscheck", "task": f"forecast:{r['suite']}",
                      "epsilon_target": None, "seed": r.get("seed", 42),
                      "transport": "fedavg", "metric": "mse",
