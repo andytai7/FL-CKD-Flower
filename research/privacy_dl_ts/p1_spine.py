@@ -34,11 +34,14 @@ RESULTS = Path(__file__).resolve().parents[2] / "results" / "dl_ts_p1.json"
 
 def run_cell(*, epsilon: float | None, rounds: int, splits: list[dict], clinic_ns: list[int],
              seed: int, batch: int = 64, steps_epochs: float = 1.0, clip: float = 1.0,
-             lr: float = 0.5, proximal_mu: float = 0.0, transport: str = "fedavgm",
+             lr: float = 0.001, proximal_mu: float = 0.0, transport: str = "fedavgm",
              momentum_beta: float = 0.6, quiet: bool = False) -> dict:
     """One (ε, seed, transport) cell: R rounds of DP-SGD local steps aggregated by a real
     Flower strategy (FedAvgM default — the track's measured transport; fedavg and fedprox
-    comparator arms for matrix Q3)."""
+    comparator arms for matrix Q3). Local descent is DP-Adam inside `dp_sgd_local`
+    (per-record clip+noise unchanged; Adam moments post-process the noised aggregate), so
+    lr is Adam-scale - the 2026-09-04 pre-commit audit found plain per-record SGD stuck at
+    ~0.51 AUROC for seeds 43-46 regardless of lr in 0.05..0.50 (r20 probe included)."""
     plans = []
     for n in clinic_ns:
         steps = max(1, math.ceil(steps_epochs * n / batch))
