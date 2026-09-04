@@ -447,10 +447,13 @@ cited formulas, measured SecAgg+ reference only).
   ParamVectorMixin round-trip contract checked at import.
 - **Sanity gate verdict** (target: reproduce the logreg band 0.625 before privacy spend):
   v1 mean-pool LSTM FAILED (AUROC ~0.53 through r7); mean+max + epochs FAILED (~0.51);
-  conv stem fixed feature dilution; **FedAvgM β=0.6 transport PASSED: r5-r10 0.668 -> 0.716,
-  worst clinic 0.53-0.61**. Comparator rows: FedAvg same-config 0.601 final (peak 0.646 @ r5,
-  mid-run drift), FedProx μ=0.1 0.525 (over-suppressed on these gradient magnitudes).
-  **Transport decision: FedAvgM default on the TS track; FedAvg/FedProx stay comparator rows.**
+  conv stem fixed feature dilution. **Transport: FedAvgM β=0.6 — final definition is flwr's
+  built-in `FedAvgM` (server_lr=1.0), built-in gate row r5-r10 0.605 -> 0.635, in-band,
+  worst clinic 0.578 @ r10** (the first-pass custom momentum-warm-up subclass read 0.716 @
+  r10 on the same seed and is recorded as superseded; the matrix standardises on the
+  built-in so every seed runs one momentum definition). Comparator rows: FedAvg same-config
+  0.601 final (peak 0.646 @ r5, mid-run drift), FedProx mu=0.1 0.525 (over-suppressed on
+  these gradient magnitudes).
 - **P1 machinery**: `dpsgd_ts.py` honest per-record clip+Gaussian Poisson DP-SGD
   (clip-rate audit, FedProx-compatible proximal term) + `p1_spine.py` ε-grid {off,0.5,1,2,4,8}
   runner with per-clinic standardised plans (σ_k so every clinic composes the SAME target ε);

@@ -47,14 +47,15 @@ def _split(X: np.ndarray, y: np.ndarray, seed: int, partition_id: int) -> dict:
 
 
 def local_train(model: nn.Module, X: np.ndarray, y: np.ndarray, *, epochs: int = 1,
-                lr: float = 1e-3, batch: int = 64, seed: int = 0,
+                lr: float = 1e-3, batch: int = 64, seed: int = 0, class_weight: bool = True,
                 proximal_mu: float = 0.0, anchor: torch.Tensor | None = None) -> torch.Tensor:
-    """One clinic's local step (sanity config): Adam on prevalence-weighted BCE
-    (+ optional FedProx proximal pull (μ/2)·‖θ−θ_global‖² toward the round anchor)."""
+    """One clinic's local step (sanity config): Adam on BCE — prevalence-weighted by default
+    (the bench convention); distillation passes class_weight=False since consensus labels
+    must be FIT, not rebalanced (+ optional FedProx proximal pull (μ/2)·‖θ−θ_global‖²)."""
     torch.manual_seed(seed)
     model.train()
     pos = max(1, int(y.sum()))
-    pos_weight = torch.tensor((len(y) - pos) / pos, dtype=torch.float32)
+    pos_weight = torch.tensor((len(y) - pos) / pos, dtype=torch.float32) if class_weight else None
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     params = list(model.parameters())
@@ -99,10 +100,10 @@ def run_fedavg_smoke(*, rounds: int, seeds: tuple[int, ...] = (42,), epochs: int
     clinics = load_seq_clinics(downsample=downsample)
     n_features = SEQ_LEN // downsample
     if transport == "fedavgm":
-        from .strategies import FedAvgM
+        from flwr.serverapp.strategy import FedAvgM  # flwr built-in (server_lr=1, β below)
 
         strategy = FedAvgM(
-            beta=momentum_beta, fraction_train=1.0, fraction_evaluate=1.0,
+            server_momentum=momentum_beta, fraction_train=1.0, fraction_evaluate=1.0,
             evaluate_metrics_aggr_fn=weighted_and_worst)
     else:
         strategy = FedAvg(fraction_train=1.0, fraction_evaluate=1.0,
@@ -113,6 +114,10 @@ def run_fedavg_smoke(*, rounds: int, seeds: tuple[int, ...] = (42,), epochs: int
         model = LSTMClassifier()
         torch.manual_seed(seed)
         vec = model.param_vector()
+        if transport == "fedavgm":  # built-in needs server weights primed before round 1
+            from flwr.common import ArrayRecord
+
+            strategy.current_arrays = ArrayRecord([vec.numpy()])
         for rnd in range(1, rounds + 1):
             replies = []
             for k, s in enumerate(splits):

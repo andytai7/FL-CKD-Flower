@@ -26,13 +26,14 @@ import torch.nn as nn
 
 
 class ParamVectorMixin:
-    """Expose parameters as a single dense float32 vector (the privacy-machinery contract)."""
+    """Expose TRAINABLE parameters as a single dense float32 vector (the privacy-machinery
+    contract). Buffers (BatchNorm running stats) stay clinic-local: they are deterministic
+    functions of local data, are not covered by the DP noise budget, and so never travel."""
 
     @staticmethod
     def _items(module: nn.Module):
-        for name, tensor in module.state_dict().items():
-            if tensor.dtype.is_floating_point:
-                yield name, tensor.detach()
+        for name, tensor in module.named_parameters():
+            yield name, tensor.detach()
 
     def param_vector(self) -> torch.Tensor:
         parts = [t.reshape(-1) for _, t in self._items(self)]
