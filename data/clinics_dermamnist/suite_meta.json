@@ -1,0 +1,86 @@
+{
+  "source": "MedMNIST DermaMNIST 28x28 (Zenodo 10519652; HAM10000-derived)",
+  "label": "melanoma = dx class 'mel' (binary; other six lesion classes pooled)",
+  "task": "image: 28x28 RGB, flattened row-major (f0000-f2351)",
+  "n_images": 10015,
+  "prevalence": 0.1111,
+  "partition": {
+    "method": "dirichlet-label",
+    "alpha": 0.5,
+    "seed": 45,
+    "num_clinics": 10
+  },
+  "note": "No patient/site keys or protected attributes at this payload level; T2.5 fairness-by-sex not applicable on this track. CC BY-NC 4.0 \u2014 research use only.",
+  "clinics": [
+    {
+      "clinic_id": 0,
+      "name": "shard-00",
+      "n": 1707,
+      "mel_rate": 0.0662,
+      "dir": "clinics_dermamnist"
+    },
+    {
+      "clinic_id": 1,
+      "name": "shard-01",
+      "n": 428,
+      "mel_rate": 0.3178,
+      "dir": "clinics_dermamnist"
+    },
+    {
+      "clinic_id": 2,
+      "name": "shard-02",
+      "n": 361,
+      "mel_rate": 0.1219,
+      "dir": "clinics_dermamnist"
+    },
+    {
+      "clinic_id": 3,
+      "name": "shard-03",
+      "n": 968,
+      "mel_rate": 0.3202,
+      "dir": "clinics_dermamnist"
+    },
+    {
+      "clinic_id": 4,
+      "name": "shard-04",
+      "n": 506,
+      "mel_rate": 0.0968,
+      "dir": "clinics_dermamnist"
+    },
+    {
+      "clinic_id": 5,
+      "name": "shard-05",
+      "n": 40,
+      "mel_rate": 0.125,
+      "dir": "clinics_dermamnist"
+    },
+    {
+      "clinic_id": 6,
+      "name": "shard-06",
+      "n": 875,
+      "mel_rate": 0.2023,
+      "dir": "clinics_dermamnist"
+    },
+    {
+      "clinic_id": 7,
+      "name": "shard-07",
+      "n": 245,
+      "mel_rate": 0.1878,
+      "dir": "clinics_dermamnist"
+    },
+    {
+      "clinic_id": 8,
+      "name": "shard-08",
+      "n": 2309,
+      "mel_rate": 0.0243,
+      "dir": "clinics_dermamnist"
+    },
+    {
+      "clinic_id": 9,
+      "name": "shard-09",
+      "n": 2576,
+      "mel_rate": 0.0687,
+      "dir": "clinics_dermamnist"
+    }
+  ]
+}
