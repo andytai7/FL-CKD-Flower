@@ -320,16 +320,29 @@ tasks). Rehearse an extraction on the practice box with
 
 ## Branches
 
-This repo doubles as the **frozen baseline infrastructure** and the lab bench for the privacy
-protocol work. Keep the separation literal:
+A simple gitflow: `main` is the **frozen infrastructure**, `dev` is the integration branch, and
+each data kind gets its own `experiment/` track.
 
 | Branch | Role | Rule |
 |---|---|---|
-| `main` | The pipeline as the main infrastructure: Flower app, V1 frozen data, published baselines | **Do not change it** except for reviewed, finalized work merged back |
-| `experiment/privacy-protocol` | The lab bench for the privacy-protocol iterations (T2.3 → MS4) | Kept **stale** at the frozen commit until protocol work starts; finalize there, then merge back to `main` |
+| `main` | Frozen infrastructure: Flower app, runners, the V1 data contract, published baselines | Changed only by reviewed merges from `dev` |
+| `dev` | Integration branch. Starts identical to `main`; dataset plumbing (mappers, provenance) and finalized track work land here first | Merge to `main` at milestones |
+| `experiment/tabular` | The tabular CKD federation: V1 clinics (frozen contract), the 8 V2 hardness suites as a run matrix, NHANES / UCI / Synthea mappers | Track experiments; merge back via `dev` |
+| `experiment/image` | Dermoscopy image track — MedMNIST DermaMNIST (skin-lesion diagnosis, a GP triage task); raw payload under `data/external/dermamnist/` | Same pattern |
+| `experiment/timeseries` | Single-lead ECG track — PhysioNet CinC Challenge 2017 (atrial-fibrillation screening); raw payload under `data/external/ecg_cinc2017/` | Same pattern |
+| `experiment/privacy-protocol` | Legacy privacy-protocol lab bench (T2.3 → MS4); stays stale at the frozen commit until protocol work resumes | Finalize there, then merge back |
 
-The experiment assets from the dataset work (V2 suites, external-data mappers, notebooks 04/05)
-are fully additive and already on `main` — they extend the infrastructure without altering V1 or
-any runner. Anything that changes the privacy machinery itself (`dpsgd.py`, `orchestrator.py`,
-`privacy.py`, run-config privacy keys, notebooks 02/03) belongs on the branch, not on `main`,
-until the protocol is finalized.
+Rules of the road:
+
+1. **Dataset payloads are never committed.** Raw downloads and generated clinic CSVs are
+   gitignored; regenerate synthetic suites via the CLIs, re-download externals via the URLs and
+   checksums in [`data/external/SOURCES.md`](data/external/SOURCES.md). A branch carries code,
+   config, and provenance — never data.
+2. **One `experiment/` branch per data kind, not per dataset folder.** The eight V2 suites are a
+   run matrix inside `experiment/tabular`, not eight branches.
+3. New federation logic stays a Flower `Strategy` subclass over the permitted model class
+   ([CLAUDE.md](CLAUDE.md) rules 1–2): image and time-series targets train linear-over-features
+   (flattened pixels / waveform features) unless the consortium re-scopes rule 2.
+4. Anything that changes the privacy machinery itself (`dpsgd.py`, `orchestrator.py`,
+   `privacy.py`, run-config privacy keys, notebooks 02/03) belongs on a track branch, not on
+   `main`/`dev`, until finalized.
