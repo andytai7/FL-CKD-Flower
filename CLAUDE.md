@@ -11,23 +11,25 @@
 
 ## 0a. Branch charter — dev
 
-Integration branch **and home of the methodology toolkit** (user-directed topology,
-2026-09-04): **branches name data kinds — never methodologies.** The four privacy/FL paradigms of
-the deep-time-series benchmark live as shared code under `research/privacy-dl-ts/` (design
-contract: `research/privacy-dl-ts/README.md`), built here and imported by every data track; each
-`experiment/<data-kind>` branch runs the *same* methodology matrix over *its* data, so
-cross-method comparison is a table and cross-data comparison is three tables side by side.
+Integration branch (the gitflow middle). User-directed topology (2026-09-04): **branches name
+data kinds — never methodologies.** Methodologies are **categorized per data kind and committed
+to the matching data branch** — not shared code here: `experiment/timeseries` carries the
+time-series DL × privacy benchmark at `research/privacy-dl-ts/` (RNN arms; user-level
+trajectory-DP privacy model), `experiment/image` carries the dermoscopy benchmark at
+`research/privacy-dl-image/` (CNN arms over FedAvg; per-image record-level DP). **No
+methodology code or docs live on dev.**
 
 Currently on top of `main`: externals provenance + gitignore for DermaMNIST and CinC 2017
-(`SOURCES.md`); generic preprocessing plumbing (`to_xy` generic-label dispatch, schema-aware
-`load_dataframe`, `dirichlet_partition(label_col=...)`, data-driven model width in
-`simulate.py`; V1 regression verified ≈0.795 AUROC unchanged); the benchmark design contract.
+(`SOURCES.md`), and the generic preprocessing plumbing — `to_xy` generic-label dispatch
+(`melanoma` / `afib`), schema-aware `load_dataframe` validation, `dirichlet_partition(label_col=...)`,
+data-driven model width in `simulate.py` (V1 regression verified: ≈0.795 AUROC unchanged).
 
 **DL scope discipline:** the deployable FLIP-IT paths (`server_app.py`, `client_app.py`, the
-Flower App Bundle) stay logistic-regression-only (rule 2). Deep models (LSTM/GRU/PatchTST) are
-benchmark code under `research/`, gated behind the uv-managed optional `dl` extra (rule 4), and
-never imported by the deployment modules. Rules 1 and 8 bind everywhere, toolkit included:
-Flower transports only; every protocol is a `Strategy` subclass.
+Flower App Bundle) stay logistic-regression-only (rule 2). Deep models and privacy-benchmark
+protocols are research-tree code on the data branches behind the uv-managed optional `dl` extra
+(rule 4), never imported by deployment modules. Rules 1 and 8 bind everywhere: Flower
+transports only; every protocol is a `Strategy` subclass. Data branches fork from here and
+merge back here; `main` receives only reviewed merges.
 
 ---
 
