@@ -20,6 +20,7 @@ data/external/dermamnist/
 data/external/ecg_cinc2017/
 data/external/ett/
 data/external/weather/
+data/external/ham10000/
 data/clinics_forecast/
 # Flower App Bundles produced by `flwr build` / `flwr run`.
 *.fab
