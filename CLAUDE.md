@@ -9,6 +9,23 @@
 
 ---
 
+## 0a. Branch charter — experiment/tabular
+
+The CKD tabular track — the original stack with unchanged semantics: V1 frozen
+(`manifest_v1.sha256`), the eight V2 hardness suites as one run matrix (`synthesize_v2.py`
+knobs are run configurations, not branches), the NHANES / UCI / Synthea mapped cohorts, and
+notebooks 01–05. New tabular protocol and privacy-structure work lands here: the per-dataset
+privacy plans (deployment-standard replication at pilot scale on `clinics_nhanes_s`;
+fairness-under-DP by sex on `clinics_nhanes`; the single-practice floor on `clinics_uci`; the
+V2-ablation audits: label-noise MIA, undercoding leakage, frailty correlation-aware MIA,
+concept-shift personalization, imbalance ε-equity).
+
+All rules in this file bind unmodified — rule 2 strictly: logistic regression is the only model
+class on this track. Renamed from `experiment/synthetic` (2026-09-04) to cover all tabular data,
+not just the generated suites.
+
+---
+
 ## 0. Immutable constraints — DO NOT VIOLATE (read first)
 
 > 🔒 **These are non-negotiable project invariants.** They override convenience, performance, and
