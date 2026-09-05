@@ -223,7 +223,7 @@ full ε grids; dispersion on the headline ε {off, 1, 4} from seeds 43-46.
 
 | ε | seed 42 | seeds 43-46 range (headline ε subset) |
 |---|---|---|
-| off | 0.606 | 0.592 – 0.636 |
+| off | 0.630 | 0.592 – 0.636 |
 | 0.5 | 0.657 | — |
 | 1 | 0.657 | 0.579 – 0.627 |
 | 2 | 0.657 | — |
@@ -231,17 +231,56 @@ full ε grids; dispersion on the headline ε {off, 1, 4} from seeds 43-46.
 | 8 | 0.657 | — |
 | 16 | 0.657 | — |
 
+Seed-42 grid rows are the 2026-09-05 restoration rerun (the original file was clobbered by
+the sweep's checkpoint path on 2026-09-04; writer discipline fixed in `sweep_p1_seeds.py`):
+paid-ε cells reproduce to ~4e-4 against the originally recorded values; the off-arm reads
+0.630 vs the originally recorded 0.606 — the σ=0 no-noise path is chaos-amplified over
+10 rounds × 10 clinics, so single-seed off values carry that spread; paid cells are
+noise-dominated and land on the same plateau. All conclusions unchanged.
+
 Findings: (i) at the 10-round bench budget the arm is **utility-flat across ε ∈ [0.5, 16]** —
 round-1 rows separate monotonically in ε (0.6550 → 0.6532) but all cells converge to the
-same fixed point by round 10; (ii) the off-arm (σ=0, clip active) is the weakest link
-(0.606), a clipping-regularization effect; (iii) **loss-threshold MIA: no detectable
-advantage at ANY ε including off** (attack AUC 0.499-0.501, TPR@FPR=1% = 0.70-0.80×
+same fixed point by round 10; (ii) the off-arm (σ=0, clip active) sits slightly BELOW the
+paid band (0.63 vs 0.657 — single-seed σ=0 readings fluctuate, see the restoration note
+above); (iii) **loss-threshold MIA: no detectable advantage at ANY ε including off**
+(attack AUC 0.499-0.501, TPR@FPR=1% = 0.70-0.80×
 marginal) — recorded as a lower-bound audit (shadow-model attacks out of scope);
 (iv) worst-clinic AUROC dips to 0.000 on seed 46 for every ε — clinic 5's 8-row test fold
 {7 negative, 1 positive}: an 8-row-eval variance artifact of the benchmark's fairness column,
 not a DP effect (n_te≥15 folds are stable); (v) per-clinic composed ε ≤ target verified
 exactly on every cell. Seed-42 DP rows share subsample draws across ε (in-cell metrics fine;
 the sweep rows redecorrelate).
+
+### P1 per-layer clipping variant (5 module groups; equal composed ε), AUROC at round 10
+
+Module-group per-record clipping (conv.0 / conv.3 / conv.6 / head.1 / head.3 merged
+weight+bias), per-layer noise σ·√L·C so the joint-sensitivity calibration matches the
+global cell (same accountant input; the √L inflation is the price of layerwise geometry).
+Full ε grid on seed 42 (`results/dl_image_p1_layerwise.json`; filter-health traces per round
+carried in each row's `layer_health_trace`).
+
+| ε | AUROC (global arm) |
+|---|---|
+| off | 0.643 (0.630) |
+| 0.5 | 0.642 (0.657) |
+| 1 | **0.668** (0.657) |
+| 2 | 0.666 (0.657) |
+| 4 | 0.663 (0.657) |
+| 8 | 0.664 (0.657) |
+| 16 | 0.664 (0.657) |
+
+Findings: (i) the same plateau phenomenon (0.642-0.668), with the paid cells sitting at or
+slightly ABOVE the same-ε global arm (e.g. ε=1: 0.668 vs 0.657) despite the √5 = 2.24×
+per-coordinate noise inflation the layerwise mechanism pays; (ii) per-layer and global
+clip rates are both in the 0.15-0.18 band at C=1 — the geometry difference is benign
+because the CLIPPED records are heavy outliers, not the bulk: per-layer pre-clip norms
+have median ≈ 0.15-0.17 while conv.6's p95 pre-clip norm runs to 28 by round 10 (the
+`layer_health_trace` columns make the tail readable round by round); (iii) ordering
+residuals at round 1 invert under large noise (tight-ε cells' median norms read HIGHER
+because σ√L step noise drives gradient magnitude — mechanism noise feeding back into the
+trace, flagged so nobody reads it as a clipping signal); (iv) MIA: attack AUC 0.499,
+TPR@1% 0.70-0.80× — same no-advantage audit as the global arm; (v) cost is real: identical
+composed ε needs √L=2.24× the per-coordinate noise std.
 
 ### P3 — FedCT consensus (isolated teachers, train-carve public pool q≤512, seed 42)
 
@@ -251,6 +290,33 @@ counted in-row). **Every paid cell is destroyed**: Gaussian count noise σ_v ∈
 27,457] against K=10 votes (ε ∈ [0.5, 8]) → students at chance (NaN). Consensus voting is
 nonviable at bench scale; the clean-arm result is the information ceiling if query volume
 grew an order of magnitude.
+
+### P3-RR — randomized-response votes (local RR per teacher-vote, advanced composition δ=1e-5, seed 42)
+
+Second vote-privatization mechanism beside the Gaussian-aggregate row: each teacher flips
+its vote w.p. p per query (local pure-DP per query), server debiases the count
+k̂ = (S − Kp)/(1 − 2p) and thresholds at K/2. Per-query ε_v solved by bisection on advanced
+composition over q=512 (composed ≤ target, exact); closed-form estimator noise
+σ_eq = √(K·p(1−p))/(1−2p).
+
+| ε | ε_v | p_flip | σ_eq | student AUROC |
+|---|---|---|---|---|
+| 0.5 | 0.0045 | 0.499 | 701 | 0.472 |
+| 1 | 0.0088 | 0.498 | 358 | 0.544 |
+| 2 | 0.0170 | 0.496 | 186 | 0.482 |
+| 4 | 0.0319 | 0.492 | 99 | 0.496 |
+| 8 | 0.0576 | 0.486 | 55 | 0.485 |
+
+Findings: (i) RR partially SURVIVES where the Gaussian row is at pure chance (landed-low
+band 0.47-0.54 vs the 0.595 clean ceiling) — exact local composition beats the pessimistic
+√(2K) aggregate-sensitivity chain at this (K,q); (ii) the **rare-positive audit row erodes
+any comfort**: debiased positive-label counts swing 195-306 against 250 clean positives and
+recall-vs-clean sits at 0.42-0.64 — the rare class partially disappears and gains false
+positives, exactly the consensus-mode failure the RR arm was meant to probe; (iii) rerun
+fidelity: teachers retrained once, all 12 Gaussian replication cells match the committed
+grid with max |ΔAUROC| = 0.0 (`gaussian_replication_verdict` in
+`results/dl_image_p3_rr.json`); (iv) the mechanism chain conclusion stands: consensus at
+K=10, q=512 cannot deliver useful paid labels — RR just fails softer.
 
 ### P4 — verified-hybrid DDG (mod-2³² ring, scale 1e-3, FedAvg wire), AUROC at round 10
 
@@ -268,7 +334,7 @@ Norm proofs verified on every round of every cell; KLS feasibility (σ_int ≥ 2
 paid ε; composed ε exact under the same epsilon_rdp accounting as P1. The ~0.02-0.03 gap vs
 P1's fedprox rows is the transport confound (FedAvg single-masker wire), not the DDG
 noising; quantizer hooks proved benign by the off-row. **P4 beats P1 on the off-arm**
-(0.649 vs 0.606 — clip-heavy FedAvg + integer sums converge better than clip+FedProx here).
+(0.649 vs 0.630 — clip-heavy FedAvg + integer sums converge better than clip+FedProx here).
 
 ### P2 — SecAgg+ cost row
 

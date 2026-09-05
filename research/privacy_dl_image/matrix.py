@@ -30,11 +30,30 @@ def main() -> None:
                          "epsilon_target": r["target_epsilon"], "seed": r["seed"],
                          "transport": r.get("transport", "fedprox-0.1"), "metric": "auc",
                          "metric_value": r["final_auc"], "metric_worst": r["final_auc_worst"],
-                         "aux": {"scope": scope,
+                         "aux": {"scope": scope, "clipping": r.get("clipping", "global"),
                                  "mia_attack_auc": mia.get("attack_auc"),
                                  "mia_tpr_at_fpr1pct": mia.get("tpr_at_fpr1pct"),
                                  "mia_tpr_ratio": mia.get("tpr_ratio_vs_marginal"),
                                  "clip_rate": r["history"][-1].get("clip_rate")}})
+
+    for r in _load("dl_image_p1_layerwise.json"):
+        mia = r.get("mia", {})
+        health = r.get("layer_health_trace", [])
+        final_h = health[-1] if health else {}
+        rows.append({"track": "image", "paradigm": "P1-layerwise", "task": "dermamnist_melanoma",
+                     "epsilon_target": r["target_epsilon"], "seed": r["seed"],
+                     "transport": r.get("transport", "fedprox-0.1"), "metric": "auc",
+                     "metric_value": r["final_auc"], "metric_worst": r["final_auc_worst"],
+                     "aux": {"scope": "seed42-fullgrid", "clipping": "perlayer",
+                             "n_layers": r.get("n_layers"),
+                             "mia_attack_auc": mia.get("attack_auc"),
+                             "mia_tpr_at_fpr1pct": mia.get("tpr_ratio_vs_marginal"),
+                             "clip_frac_per_layer_final": {nm: v["clip_frac_mean"]
+                                                           for nm, v in final_h.items()},
+                             "med_norm_per_layer_final": {nm: v["med_norm_mean"]
+                                                          for nm, v in final_h.items()},
+                             "p95_norm_per_layer_final": {nm: v["p95_norm_mean"]
+                                                          for nm, v in final_h.items()}}})
 
     for r in _load("dl_image_p3.json"):
         for c in r["cells"]:
@@ -51,6 +70,26 @@ def main() -> None:
                      "metric_value": r["clean_student"]["auc"],
                      "metric_worst": r["clean_student"]["auc_worst"],
                      "aux": {"gamma_hat": r["gamma_hat"], "majority_acc": r["majority_acc"]}})
+
+    p3rr_file = R / "dl_image_p3_rr.json"
+    if p3rr_file.exists():
+        d = json.loads(p3rr_file.read_text())
+        for r in d["rows"]:
+            rows.append({"track": "image", "paradigm": "P3-rr", "task": "dermamnist_melanoma",
+                         "epsilon_target": r["epsilon"], "seed": r["seed"],
+                         "transport": "consensus-rr-votes", "metric": "auc",
+                         "metric_value": r["auc"], "metric_worst": r["auc_worst"],
+                         "aux": {"mechanism": "rr-vote", "eps_vote": r["eps_vote"],
+                                 "eps_vote_basic_ref": r["eps_vote_basic_ref"],
+                                 "p_flip": r["p_flip"], "sigma_equiv": r["sigma_equiv"],
+                                 "pos_count_clean": r["pos_count_clean"],
+                                 "pos_count_rr": r["pos_count_rr"],
+                                 "pos_recall_vs_clean": r["pos_recall_vs_clean"],
+                                 "eval_clinics_defined": r["eval_clinics_defined"]}})
+        rows.append({"track": "image", "paradigm": "P3-rr-replication", "task": "rerun-fidelity",
+                     "epsilon_target": None, "seed": None, "transport": None,
+                     "metric": None, "metric_value": None, "metric_worst": None,
+                     "aux": dict(d.get("gaussian_replication_verdict", {}))})
 
     for r in _load("dl_image_p4.json"):
         rows.append({"track": "image", "paradigm": "P4", "task": "dermamnist_melanoma",
