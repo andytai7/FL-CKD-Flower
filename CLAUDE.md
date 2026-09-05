@@ -21,7 +21,16 @@ First TODOs: local-epoch / learning-rate scheduling against the round-to-round o
 FedProx μ. DL × privacy benchmark (P1 record-DP-SGD + MIA audit, P2 SecAgg+, P3 FedCT, P4
 verified-hybrid DDG): `notebooks/09_image_privacy_dl.ipynb` (executed on this branch). Headline
 results in `research/privacy-dl-image/README.md`; matrix rows are the local
-`results/dl_image_matrix.json`.
+`results/dl_image_matrix.json`. The modality privacy policy —
+`research/privacy-dl-image/PRIVACY-POLICY.md` — fixes the protection unit, the ε∈[1,4] budget
+standard, mechanism/transport locks, paradigm dispositions, and release gates.
+
+**Review gate (user-directed, 2026-09-05):** nothing on this branch merges into `main` or
+`dev` automatically. Milestone integration is a manual user review: the user inspects branch
+state (research tree, notebooks, matrices) and personally performs or approves any merge
+into `dev`/`main`. Automation in this repo (watchdog auto-commit sweeps, scheduled jobs) may
+operate only within this working branch; it must never create merge commits into `dev` or
+`main`, and those branches are never pushed without the user's explicit action.
 
 All rules in this file bind unmodified — with one **dated, user-directed, track-local waiver
 (2026-09-04)**: rule 2 (logreg-only) is waived **for the research tree only** so this track can
