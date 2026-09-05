@@ -83,6 +83,16 @@ def main() -> None:
                      "aux": {"dp_level": r["level"], "horizon": r["horizon"],
                              "scope": "pilot" if r["level"] == "event" else "full"}})
 
+    for r in _load("dl_ts_forecast_p1_linear.json"):
+        rows.append({"track": "timeseries", "paradigm": "P1-forecast", "task": f"forecast:{r['suite']}",
+                     "epsilon_target": r["target_epsilon"], "seed": r["seed"],
+                     "transport": "fedavg", "metric": "mse",
+                     "metric_value": r["final_mse"], "metric_worst": None,
+                     "aux": {"dp_level": "user", "horizon": r["horizon"], "scope": "full",
+                             "model": "linear", "d_params": r["d_params"],
+                             "sigma_sqrt_d": r["sigma_sqrt_d"],
+                             "note": "parameter-efficient trajectory-DP feasibility arm"}})
+
     # P2 analytic cost rows (no utility metric — protocol cost rows, flagged)
     p2 = R / "dl_ts_p2.json"
     if p2.exists():

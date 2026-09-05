@@ -1,5 +1,10 @@
 # Privacy-preserving federated deep learning on time series — benchmark design
 
+> **Privacy policy (operative, 2026-09-05):** [`PRIVACY-POLICY.md`](PRIVACY-POLICY.md) —
+> the modality's settled protection unit, budget standard (ε∈[1,4]), mechanism/transport
+> locks, paradigm dispositions, release gates, and the branch review gate. This README is
+> the design + evidence record; the policy doc is what governs new runs.
+
 > **Track charter (experiment/timeseries).** This document is the contract for the
 > time-series branch of the privacy-preserving-FL benchmark. It lives **on this data-kind
 > branch** (methods are categorized per data kind; no methodology sits on `dev`), under a
@@ -510,6 +515,17 @@ weather/h96 — honest per-record loops on the decoder rollout cost ~25 min/roun
 scale, so the arm ran at pilot footprint (rounds=3, steps_epochs=0.03, labelled pilot):
 MSE off 1.192 vs ε 0.5-8 ∈ [1.177, 1.192] (pre-learning plateau). **User-level (trajectory)
 DP: EVERY paid cell collapses** — clip-1.0 round-delta + Gaussian σ at wire scale d≈39k with
-effective norm multiplier σ·√d ≈ 400 at ε=1 → MSE 1,100+ then NaN (ε=8 rows MSE 27-52 alive
+effective norm multiplier σ·√d ≈ 1,385 at ε=1 (≈400 at ε=4; exact per-row multipliers live in
+the results JSON) → MSE 1,100+ then NaN (ε=8 rows MSE 27-52 alive
 but destroyed). The user-level trajectory-DP infeasibility at this parameter scale is a
 matrix finding, recorded as honest NaN rows.
+
+**Linear-forecaster resolution of that gap (2026-09-05)** (`dl_ts_forecast_grid.json`
+`model=linear` rows + `dl_ts_forecast_p1_linear.json`): the channel-shared linear arm
+(d=9,312 — 4.2× smaller than the GRU) is a weak clean reference on these suites (MSE
+0.65–1.38 vs GRU 0.055–0.24; ACF fidelity holds, corr 0.98–0.996) and its user-level paid
+cells STILL collapse (σ·√d = 676/193 at ε=1/ε=4 vs GRU's 1,385/395; etth1 MSE 2,873@ε1 and
+229@ε4 vs 0.93 off; weather 2,613@ε1 and 188@ε4 vs 1.34 off). Halving √d buys roughly a 4×
+MSE reduction at fixed ε — orders short of viability. Trajectory-level forecasting DP is
+closed at this protocol; remaining levers are protocol-side (clinic count, rounds), not
+model-side.

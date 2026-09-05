@@ -30,7 +30,7 @@ from flwr.serverapp.strategy import FedAvg, FedAvgM
 
 from messages import evaluate_reply, hushed, train_reply
 
-from .models import GRUForecaster, LSTMForecaster
+from .models import GRUForecaster, LinearForecaster, LSTMForecaster
 
 FORECAST_DIR = Path(__file__).resolve().parents[2] / "data" / "clinics_forecast"
 RESULTS_P2STUB = Path(__file__).resolve().parents[2] / "results"
@@ -154,8 +154,9 @@ def run_forecast_smoke(*, suite: str = "etth1", horizon: int = 96, rounds: int =
     """GRU/LSTM over one suite; dual-level MSE/MAE + ACF fidelity per round."""
     clinics = load_suite(suite, horizon)
     n_ch = clinics[0]["series"].shape[1]
-    make = (lambda: GRUForecaster(n_ch, horizon)) if model_kind == "gru" else \
-        (lambda: LSTMForecaster(n_ch, horizon))
+    make = {"gru": lambda: GRUForecaster(n_ch, horizon),
+            "lstm": lambda: LSTMForecaster(n_ch, horizon),
+            "linear": lambda: LinearForecaster(IN_LEN, horizon)}[model_kind]
     if transport == "fedavgm":
         from flwr.common import ArrayRecord
     strategy = (FedAvgM(server_momentum=0.6) if transport == "fedavgm" else FedAvg)(
