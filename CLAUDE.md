@@ -20,6 +20,10 @@ pseudo-practices (accepted seed 48), 309 features per recording (300-bin wavefor
 (executed; AUROC rising into the 0.63–0.65 band by round 15, worst practice ≈0.56). First
 TODOs: sensitivity at a fixed operating point instead of the 0.5 threshold; band-limited or
 higher-resolution profile features; more local epochs; FedProx μ against the skewed shards.
+DL × privacy benchmark (P1 DP-SGD/DP-Adam, P2 SecAgg+, P3 FedCT, P4 verified-hybrid DDG,
+forecasting cross-check + DP): `notebooks/08_ts_privacy_dl.ipynb` (executed on this branch).
+Headline results in `research/privacy-dl-ts/README.md`; matrix rows are the local
+`results/dl_ts_matrix.json`.
 
 All rules in this file bind unmodified — with one **dated, user-directed, track-local waiver
 (2026-09-04)**: rule 2 (logreg-only) is waived **for the research tree only** so this track can
