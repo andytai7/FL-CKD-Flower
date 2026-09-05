@@ -1,5 +1,10 @@
 # Deep-Learning Privacy Benchmark — Dermoscopy Images (DermaMNIST)
 
+> **Privacy policy (operative, 2026-09-05):** [`PRIVACY-POLICY.md`](PRIVACY-POLICY.md) —
+> the modality's settled protection unit, budget standard (ε∈[1,4]), mechanism/transport
+> locks, paradigm dispositions, release gates, and the branch review gate. This README is
+> the design + evidence record; the policy doc is what governs new runs.
+
 Design contract for the image data kind (user-directed, 2026-09-04): the federation is
 **weight-sharing over Flower's real strategies** (rules 1/8), the model class moves from
 logistic-regression-over-pixels to a **small CNN** (track-local rule-2 waiver in `CLAUDE.md`
