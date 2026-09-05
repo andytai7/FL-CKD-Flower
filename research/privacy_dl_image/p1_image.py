@@ -39,7 +39,8 @@ RESULTS.parent.mkdir(parents=True, exist_ok=True)
 
 def run_cell(*, epsilon: float | None, rounds: int, splits: list[dict], clinic_ns: list[int],
              seed: int, batch: int = 64, steps_epochs: float = 1.0, clip: float = 1.0,
-             lr: float = 0.1, proximal_mu: float = 0.1, quiet: bool = False) -> dict:
+             lr: float = 0.1, proximal_mu: float = 0.1, clipping: str = "global",
+             quiet: bool = False) -> dict:
     plans = []
     for n in clinic_ns:
         steps = max(1, math.ceil(steps_epochs * n / batch))
@@ -56,16 +57,24 @@ def run_cell(*, epsilon: float | None, rounds: int, splits: list[dict], clinic_n
     torch.manual_seed(seed)
     vec = model.param_vector()
     history = []
+    health_trace: list[dict] = []
     for rnd in range(1, rounds + 1):
         replies = []
         clips = []
+        health_acc: dict[str, dict[str, float]] = {}
         for k, (s, plan) in enumerate(zip(splits, plans)):
             m = CNNSmall(); m.load_param_vector(vec.clone())
             out, audit = dp_sgd_local(m, s["Xtr"], s["ytr"], steps=plan["steps"],
                                       batch=batch, sigma=plan["sigma"], clip=clip, lr=lr,
-                                      proximal_mu=proximal_mu, anchor=vec,
+                                      proximal_mu=proximal_mu, anchor=vec, clipping=clipping,
                                       seed=seed * 1_000_003 + k * 9_973 + rnd * 91_193)
             clips.append(audit["clip_rate_mean"])
+            if audit.get("layer_health"):
+                for nm, h in audit["layer_health"].items():
+                    acc = health_acc.setdefault(nm, {"clip_frac_mean": 0.0,
+                                                     "med_norm_mean": 0.0, "p95_norm_mean": 0.0})
+                    for key in acc:
+                        acc[key] += h[key]
             replies.append(train_reply([out.numpy()], len(s["ytr"])))
         with hushed():
             arrays, _ = strategy.aggregate_train(rnd, replies)
@@ -80,6 +89,10 @@ def run_cell(*, epsilon: float | None, rounds: int, splits: list[dict], clinic_n
         row = dict(agg) if agg else {}
         row.update({"round": rnd, "clip_rate": float(np.mean(clips))})
         history.append(row)
+        if health_acc:
+            k_clinics = len(splits)
+            health_trace.append({nm: {key: round(acc[key] / k_clinics, 5) for key in acc}
+                                 for nm, acc in health_acc.items()})
         if not quiet:
             eps_txt = "off" if epsilon is None else f"{epsilon:g}"
             print(f"  imgP1 eps={eps_txt:<4} round {rnd:>2}: AUROC={row.get('auc', float('nan')):.3f} "
@@ -92,13 +105,17 @@ def run_cell(*, epsilon: float | None, rounds: int, splits: list[dict], clinic_n
     cap_m = rng.permutation(len(y_m))[:2000]; cap_n = rng.permutation(len(y_n))[:2000]
     mia = mia_loss_threshold(m, X_m[cap_m], y_m[cap_m], X_n[cap_n], y_n[cap_n])
     final = history[-1]
-    return {"target_epsilon": epsilon, "seed": seed, "transport": "fedprox",
-            "proximal_mu": proximal_mu, "plans": plans, "mia": mia,
-            "final_auc": float(final.get("auc", np.nan)),
-            "final_auc_worst": float(final.get("auc_worst", np.nan)),
-            "auc_curve": [round(float(h.get("auc", np.nan)), 4) for h in history],
-            "history": [{k: (round(float(v), 4) if isinstance(v, float) else v)
-                         for k, v in h.items()} for h in history]}
+    row_out = {"target_epsilon": epsilon, "seed": seed, "transport": "fedprox",
+               "proximal_mu": proximal_mu, "clipping": clipping, "plans": plans, "mia": mia,
+               "final_auc": float(final.get("auc", np.nan)),
+               "final_auc_worst": float(final.get("auc_worst", np.nan)),
+               "auc_curve": [round(float(h.get("auc", np.nan)), 4) for h in history],
+               "history": [{k: (round(float(v), 4) if isinstance(v, float) else v)
+                            for k, v in h.items()} for h in history]}
+    if health_trace:
+        row_out["layer_health_trace"] = health_trace  # [round][layer] clinic-mean trace
+        row_out["n_layers"] = len(health_trace[-1])
+    return row_out
 
 
 def run_grid(*, epsilons=((None, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0)), rounds: int = 10,

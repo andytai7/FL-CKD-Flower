@@ -40,27 +40,67 @@ def _per_record_grads(model: nn.Module, X: np.ndarray, y: np.ndarray,
 
 def dp_sgd_local(model: torch.nn.Module, X: np.ndarray, y: np.ndarray, *, steps: int,
                  batch: int, sigma: float, clip: float, lr: float, seed: int,
-                 proximal_mu: float = 0.0, anchor: torch.Tensor | None = None
-                 ) -> tuple[torch.Tensor, dict]:
+                 proximal_mu: float = 0.0, anchor: torch.Tensor | None = None,
+                 clipping: str = "global") -> tuple[torch.Tensor, dict]:
     """steps of honest DP-SGD on ONE clinic's (X, y): Poisson candidate batches, per-record
     clip C, Gaussian noise σC/|b| on the mean — returns (new flat vector, clip-rate audit).
-    FedProx-compatible: optional proximal pull μ(θ−θ_anchor) folded into each update."""
+    FedProx-compatible: optional proximal pull μ(θ−θ_anchor) folded into each update.
+
+    clipping="perlayer" (Andrew/McMahan-style layer mechanism): per-record gradient is
+    clipped per MODULE group at C each (L groups → joint sensitivity C√L), each layer's mean
+    noised at σ·√L·C/|b| so the composed ε matches the global-clip cell at the same (σ, q,
+    steps) — the calibration cost of layerwise geometry. Audit payload adds filter-health
+    traces: per-layer clip fractions and pre-clip norm median/p95 (step-averaged)."""
     rng = np.random.default_rng(seed)
     n = len(y)
     params = list(model.parameters())
+    names = [n_ for n_, _ in model.named_parameters()]
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor((n - max(1, y.sum())) / max(1, y.sum())))
+    # layer group boundaries per flat-vector offsets
+    offs = [0]
+    for p in params:
+        offs.append(offs[-1] + p.numel())
+    groups: dict[str, list[int]] = {}
+    for i, nm in enumerate(names):
+        groups.setdefault(nm.rsplit(".", 1)[0], []).append(i)
+    layer_names = list(groups.keys())
+    layer_slices = []
+    for grp in groups.values():  # merge each module's weight+bias spans into one slice
+        layer_slices.append([offs[grp[0]], offs[grp[-1] + 1]])
+    L = len(layer_slices)
+    l_gain = math.sqrt(L)
     clip_rates = []
+    health = {nm: {"clip_frac": [], "med_norm": [], "p95_norm": []} for nm in layer_names}
     for _ in range(steps):
         rows = rng.random(n) < min(1.0, batch / n)  # value-of-q
         idx = np.flatnonzero(rows)
         if len(idx) == 0:
             clip_rates.append(0.0)
+            for nm in layer_names:
+                for k_ in health[nm]:
+                    health[nm][k_].append(np.nan)
             continue
         g = _per_record_grads(model, X, y, idx, loss_fn)
-        norms = g.norm(dim=1)
-        clip_rates.append(float((norms > clip).float().mean()))
-        g = g * (clip / norms.clamp(min=clip)).unsqueeze(1)
-        noisy = g.mean(dim=0) + torch.randn_like(g[0]) * (sigma * clip / len(idx))
+        if clipping == "perlayer":
+            noisy = torch.empty_like(g[0])
+            any_clip = torch.zeros(len(idx))
+            for (lo, hi), nm in zip(layer_slices, layer_names):
+                sl = g[:, lo:hi]
+                norms = sl.norm(dim=1)
+                frac = float((norms > clip).float().mean())
+                any_clip += (norms > clip).float()
+                health[nm]["clip_frac"].append(frac)
+                health[nm]["med_norm"].append(float(norms.median()))
+                health[nm]["p95_norm"].append(float(norms.quantile(0.95)))
+                sl = sl * (clip / norms.clamp(min=clip)).unsqueeze(1)
+                noisy[lo:hi] = (sl.mean(dim=0)
+                                + torch.randn_like(sl[0]) * (sigma * l_gain * clip / len(idx)))
+            clip_rates.append(float((any_clip > 0).float().mean()))
+        else:
+            norms = g.norm(dim=1)
+            clip_rates.append(float((norms > clip).float().mean()))
+            g = g * (clip / norms.clamp(min=clip)).unsqueeze(1)
+            noisy = g.mean(dim=0) + torch.randn_like(g[0]) * (sigma * clip / len(idx))
         if proximal_mu and anchor is not None:
             flat = torch.cat([p.detach().reshape(-1) for p in params])
             noisy = noisy + proximal_mu * (flat - anchor)  # gradient of (μ/2)‖θ−θ_g‖²
@@ -70,8 +110,17 @@ def dp_sgd_local(model: torch.nn.Module, X: np.ndarray, y: np.ndarray, *, steps:
                 p -= lr * noisy[ptr : ptr + numel].view_as(p)
                 ptr += numel
     out = torch.cat([p.detach().reshape(-1) for p in params])
-    return out, {"clip_rate_mean": float(np.mean(clip_rates)) if clip_rates else 0.0,
-                 "steps_executed": steps}
+    audit = {"clip_rate_mean": float(np.mean(clip_rates)) if clip_rates else 0.0,
+             "steps_executed": steps, "clipping": clipping}
+    if clipping == "perlayer":
+        audit["layer_health"] = {
+            nm: {"clip_frac_mean": float(np.nanmean(v["clip_frac"])),
+                 "med_norm_mean": float(np.nanmean(v["med_norm"])),
+                 "p95_norm_mean": float(np.nanmean(v["p95_norm"]))}
+            for nm, v in health.items()}
+        audit["n_layers"] = L
+        audit["sigma_layer"] = sigma * l_gain
+    return out, audit
 
 
 def plan_grid_image(target_epsilon: float | None, *, rounds: int, steps_per_round: int,
