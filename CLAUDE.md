@@ -18,7 +18,10 @@ disk) — provenance, checksums, and the CC BY-NC 4.0 research-only terms in
 melanoma-vs-rest, ≥5-positives-per-clinic guard, accepted seed 45. Track notebook:
 `notebooks/06_dermamnist_melanoma.ipynb` (executed; AUROC band 0.61–0.70 over 15 FedAvg rounds).
 First TODOs: local-epoch / learning-rate scheduling against the round-to-round oscillation, then
-FedProx μ.
+FedProx μ. DL × privacy benchmark (P1 record-DP-SGD + MIA audit, P2 SecAgg+, P3 FedCT, P4
+verified-hybrid DDG): `notebooks/09_image_privacy_dl.ipynb` (executed on this branch). Headline
+results in `research/privacy-dl-image/README.md`; matrix rows are the local
+`results/dl_image_matrix.json`.
 
 All rules in this file bind unmodified — with one **dated, user-directed, track-local waiver
 (2026-09-04)**: rule 2 (logreg-only) is waived **for the research tree only** so this track can
