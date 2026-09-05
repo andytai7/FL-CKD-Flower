@@ -139,6 +139,27 @@ class GRUForecaster(ParamVectorMixin, nn.Module):
         return torch.stack(outs, dim=1)       # (B, horizon, out_c)
 
 
+class LinearForecaster(ParamVectorMixin, nn.Module):
+    """Parameter-efficient linear reference (DLinear-lite, channel-shared): a single linear
+    map from the flattened lookback window to the horizon, weights SHARED across channels
+    (individual=False). d = in_len*horizon + horizon (~9.4k at in96/h96 vs the GRU's ~39.4k)
+    — the arm that tests whether user-level (trajectory) DP becomes feasible on forecasting:
+    whole-update noise energy scales as σ·√d, so halving √d is the entire game.
+
+    Channel-shared map: x is (B, L, C); the reference target convention (forecast.py y
+    windows) is channel 0, so the model applies the SAME map per channel and returns
+    channel-0's horizon — matches the (B, horizon, out_channels=1) contract."""
+
+    def __init__(self, in_len: int, horizon: int, out_channels: int = 1):
+        super().__init__()
+        self.in_len, self.horizon, self.out_channels = in_len, horizon, out_channels
+        self.proj = nn.Linear(in_len, horizon)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        y = self.proj(x.permute(0, 2, 1))          # (B, C, horizon)
+        return y[:, : self.out_channels, :].permute(0, 2, 1)  # (B, horizon, out_c)
+
+
 class PatchTST(ParamVectorMixin, nn.Module):
     """OPTIONAL attention ablation (Nie et al. 2023 small cfg): patch 16 / stride 8, channel-
     independent, d_model 128, 3 layers. Not a benchmark arm — kept to answer "would attention
