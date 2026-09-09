@@ -98,6 +98,10 @@ uv run ckd-simulate --help                  # all flags
 
 uv run ckd-baseline --clinics               # pooled ceiling on the SAME data
 uv run ckd-benchmark --rounds 20            # full protocol benchmark -> results/
+# KFRE rule-based clinical baseline (published Tangri 8-variable equation, real NHANES labs):
+uv run python -m data.external.nhanes_to_clinics   # writes data/clinics_nhanes_kfre/ (+ V1 NHANES dirs)
+uv run ckd-kfre                             # the rule, scored on the clients' own held-out splits
+uv run ckd-benchmark --dataset nhanes-kfre  # rule + pooled ceiling + protocols in one results file
 uv run ckd-privacy --seeds 42 43 44 45 46   # central + local DP comparison baselines, SecAgg probe -> results/
 uv run ckd-audit   --seeds 42 43 44 45 46   # membership-inference leakage audit -> results/
 
@@ -129,6 +133,7 @@ since is a separate directory on top; see [data/VERSIONS.md](data/VERSIONS.md).
 | `data/clinics/*.csv` (V1) | Per-clinic, non-IID, sharing one true risk model (`uv run ckd-clinics`). Easy by construction: pooled logreg == Bayes optimum (0.851), so ε-sweeps look flat | ≈ 0.80 federated, 0.86 pooled |
 | `data/clinics_v2_*/` (V2) | 8 hardness-calibrated suites from `data/synthesize_v2.py` (`uv run python -m data.synthesize_v2 --suites all`): same V1 schema, prevalence 0.13, information-destruction knobs (risk noise, label noise, frailty, interactions, concept shift, undercoding, imbalance) | V2-main: logreg ceiling 0.813 vs Bayes 0.865; ε-response becomes visible ([notebook 05](notebooks/05_harder_synthetic_epsilon.ipynb)) |
 | `data/clinics_{nhanes,nhanes_s,uci,synthea}/` | Real-data cohorts mapped into the V1 schema by the `data/external/*_to_clinics.py` mappers (NHANES 2011–2018 cycle×sex; UCI CKD 400; Synthea 10k counties) | run through every CLI and notebook unchanged |
+| `data/clinics_nhanes_kfre/` | NHANES labs in the **KFRE schema** (age, sex, eGFR, ACR, albumin, phosphorus, bicarbonate, calcium; ~98% complete-case) — lets the published Tangri rule (`kfre.py`) face the federated logreg on identical rows | rule AUROC 0.994 vs federated logreg 0.995 (seed 42; label is eGFR<60 prevalence — see kfre.py's proxy caveat) |
 
 The placeholder has no learnable signal by design. Every protocol scoring ≈ 0.5 on it is the
 evidence that the ≈ 0.80 numbers on the clinics data are real, not an artefact of the harness.
@@ -174,6 +179,7 @@ Two execution modes:
 | `orchestrator.py` | Rule-based server agent (no LLM): deterministic census → ε-policy → accountant inversion → ConfigRecord dispatch; per-clinic (batch, σ) plans so every clinic composes to the same target ε; `DpsgdOrchestrator(FedAvg)` |
 | `paper/` | The Technical Expert Report (LaTeX). `make_paper.py` generates every figure, table and inline number from one run |
 | `centralized.py` | Pooled-data ceilings → `ckd-baseline` |
+| `kfre.py` | Rule-based clinical baseline — the fixed Tangri 8-variable Kidney Failure Risk Equation (MDCalc calc/10045), scored per practice on the clients' held-out splits → `ckd-kfre`; evaluation reference only, not a federated model |
 | `messages.py` | The Flower `Message` shapes the in-process runners exchange |
 | `task.py` | Local scaler, imbalanced-data metrics, T2.5 fairness metrics |
 | `data/` | Loading + missingness rules (`loader.py`), Dirichlet partitioning (`partition.py`), V1 clinic generator (`synthesize.py`), FHIR loader (`fhir_loader.py`), V2 hardness generator (`synthesize_v2.py`), external-data mappers + provenance (`external/`), dataset versioning (`VERSIONS.md`, `manifest_v1.sha256`) — plus the datasets |

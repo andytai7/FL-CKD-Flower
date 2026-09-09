@@ -52,6 +52,9 @@ dl = [
 ckd-simulate = "simulate:main"
 # Centralized "ceiling" baseline (non-federated reference). Run: uv run ckd-baseline
 ckd-baseline = "centralized:main"
+# KFRE rule-based clinical baseline (Tangri 8-var, evaluation reference only — not a federated
+# model). Run: uv run ckd-kfre   (requires the KFRE federation: uv run python -m data.external.nhanes_to_clinics)
+ckd-kfre = "kfre:main"
 # Generate synthetic per-clinic datasets (the FLIP-IT federation). Run: uv run ckd-clinics
 ckd-clinics = "data.synthesize:main"
 # Full protocol benchmark -> results/benchmark.json. Run: uv run ckd-benchmark

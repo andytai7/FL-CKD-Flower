@@ -1,0 +1,120 @@
+{
+  "source": "NHANES 2011-2018 (cycles G/H/I/J), raw labs via data/external/nhanes/",
+  "schema": "KFRE 8-variable (Tangri et al., JAMA 2011; kfre.py / MDCalc calc/10045)",
+  "label": "eGFR<60 (KDIGO stage>=3 prevalence; CKD-EPI 2021 race-free) \u2014 see kfre.py for why this makes the rule comparison a proxy",
+  "n_participants": 21102,
+  "prevalence": 0.0783,
+  "kfre_complete_case_rate": 0.9838,
+  "coding_loss": [
+    {
+      "cycle": 2011,
+      "participants_in": 9756,
+      "used": 5107,
+      "labs_observed": {
+        "egfr": 5107,
+        "acr": 5049,
+        "albumin": 5107,
+        "phosphorus": 5107,
+        "bicarbonate": 5105,
+        "calcium": 5105
+      }
+    },
+    {
+      "cycle": 2013,
+      "participants_in": 10175,
+      "used": 5563,
+      "labs_observed": {
+        "egfr": 5563,
+        "acr": 5480,
+        "albumin": 5563,
+        "phosphorus": 5562,
+        "bicarbonate": 5563,
+        "calcium": 5534
+      }
+    },
+    {
+      "cycle": 2015,
+      "participants_in": 9971,
+      "used": 5325,
+      "labs_observed": {
+        "egfr": 5325,
+        "acr": 5249,
+        "albumin": 5325,
+        "phosphorus": 5325,
+        "bicarbonate": 5325,
+        "calcium": 5325
+      }
+    },
+    {
+      "cycle": 2017,
+      "participants_in": 9254,
+      "used": 5107,
+      "labs_observed": {
+        "egfr": 5107,
+        "acr": 5016,
+        "albumin": 5107,
+        "phosphorus": 5105,
+        "bicarbonate": 5105,
+        "calcium": 5105
+      }
+    }
+  ],
+  "clinics": [
+    {
+      "clinic_id": 0,
+      "name": "2011-female",
+      "n": 2542,
+      "ckd_rate": 0.0791,
+      "kfre_complete_case_rate": 0.9862
+    },
+    {
+      "clinic_id": 1,
+      "name": "2011-male",
+      "n": 2565,
+      "ckd_rate": 0.0784,
+      "kfre_complete_case_rate": 0.9903
+    },
+    {
+      "clinic_id": 2,
+      "name": "2013-female",
+      "n": 2887,
+      "ckd_rate": 0.0786,
+      "kfre_complete_case_rate": 0.9792
+    },
+    {
+      "clinic_id": 3,
+      "name": "2013-male",
+      "n": 2676,
+      "ckd_rate": 0.0755,
+      "kfre_complete_case_rate": 0.9802
+    },
+    {
+      "clinic_id": 4,
+      "name": "2015-female",
+      "n": 2723,
+      "ckd_rate": 0.0731,
+      "kfre_complete_case_rate": 0.9868
+    },
+    {
+      "clinic_id": 5,
+      "name": "2015-male",
+      "n": 2602,
+      "ckd_rate": 0.0692,
+      "kfre_complete_case_rate": 0.9846
+    },
+    {
+      "clinic_id": 6,
+      "name": "2017-female",
+      "n": 2626,
+      "ckd_rate": 0.0853,
+      "kfre_complete_case_rate": 0.9817
+    },
+    {
+      "clinic_id": 7,
+      "name": "2017-male",
+      "n": 2481,
+      "ckd_rate": 0.0883,
+      "kfre_complete_case_rate": 0.9819
+    }
+  ]
+}

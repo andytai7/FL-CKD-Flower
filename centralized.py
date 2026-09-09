@@ -30,8 +30,10 @@ from models import LogRegModel
 from task import compute_metrics, fit_scaler
 
 
-def load_pooled(clinics: bool = False) -> pd.DataFrame:
+def load_pooled(clinics: bool = False, clinics_dir: str | None = None) -> pd.DataFrame:
     """The pooled training frame: every clinic stacked, or the flat synthetic CSV."""
+    if clinics_dir is not None:
+        return pd.concat(load_clinic_frames(clinics_dir), ignore_index=True)
     if clinics:
         return pd.concat(load_clinic_frames(), ignore_index=True)
     return load_dataframe()
@@ -45,9 +47,11 @@ def _split(X, y, seed, test_frac=0.2):
     return X[:split], y[:split], X[split:], y[split:]
 
 
-def run_centralized(seed: int = 42, local_epochs: int = 50, *, clinics: bool = False) -> dict:
+def run_centralized(
+    seed: int = 42, local_epochs: int = 50, *, clinics: bool = False, clinics_dir: str | None = None
+) -> dict:
     """Train the pooled logistic regression and return its held-out metrics (the ceiling)."""
-    X, y = to_xy(load_pooled(clinics))
+    X, y = to_xy(load_pooled(clinics, clinics_dir))
     X_train, y_train, X_test, y_test = _split(X, y, seed)
 
     # Standardized features + warm-started partial_fit (mirrors the FedAvg path).
@@ -69,11 +73,19 @@ def main() -> None:
         help="pool the on-disk data/clinics/ CSVs instead of the flat synthetic CSV. Use this "
              "whenever you are comparing against `ckd-simulate --clinics`. Run ckd-clinics first.",
     )
+    parser.add_argument(
+        "--clinics-dir", default=None,
+        help="pool the clinic CSVs in this directory instead (implies --clinics), e.g. "
+             "data/clinics_nhanes_kfre for the KFRE head-to-head ceiling.",
+    )
     args = parser.parse_args()
 
-    source = "pooled data/clinics/" if args.clinics else "flat synthetic_ckd_data.csv"
+    if args.clinics_dir is not None:
+        source = f"pooled {args.clinics_dir}"
+    else:
+        source = "pooled data/clinics/" if args.clinics else "flat synthetic_ckd_data.csv"
     print(f"Centralized (pooled-data) baseline — performance ceiling [{source}]\n" + "-" * 64)
-    m = run_centralized(seed=args.seed, clinics=args.clinics)
+    m = run_centralized(seed=args.seed, clinics=args.clinics, clinics_dir=args.clinics_dir)
     print(
         f"   logreg:  AUROC={m['auc']:.3f}  sensitivity={m['sensitivity']:.3f}  "
         f"accuracy={m['accuracy']:.3f}"

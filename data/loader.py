@@ -71,6 +71,30 @@ CANONICAL_NUM_FEATURES = len(CANONICAL_FEATURE_COLS) + 2 * len(CANONICAL_LAB_COL
 # so no missingness rules apply — image pixels and waveform features are all observed.
 GENERIC_LABEL_COLS = ("melanoma", "afib")
 
+# ── KFRE schema (Tangri rule-based baseline track) ───────────────────────────
+# The 8 raw inputs of the published Kidney Failure Risk Equation (kfre.py), in the equation's
+# units; `acr` is urine albumin-creatinine ratio in mg/g (ln-transformed by the rule, NOT here).
+# Label stays `ckd_stage3plus` so every baseline/protocol runs the same task (kfre.py documents
+# the prevalence-proxy caveat). Carried by the NHANES-derived `data/clinics_nhanes_kfre/`.
+KFRE_FEATURE_COLS = [
+    "age_years",
+    "male",
+    "egfr",
+    "acr",
+    "albumin",
+    "phosphorus",
+    "bicarbonate",
+    "calcium",
+]
+KFRE_LAB_COLS = ["egfr", "acr", "albumin", "phosphorus", "bicarbonate", "calcium"]
+# 8 raw inputs + one missing-indicator per lab = 14 model features for the logreg comparators.
+KFRE_NUM_FEATURES = len(KFRE_FEATURE_COLS) + len(KFRE_LAB_COLS)
+
+
+def has_kfre_features(df: pd.DataFrame) -> bool:
+    """True when a frame carries the KFRE schema (label + all 8 rule inputs)."""
+    return LABEL_COL in df.columns and set(KFRE_FEATURE_COLS).issubset(df.columns)
+
 _HERE = Path(__file__).resolve().parent
 DEFAULT_CSV = _HERE / "synthetic_ckd_data.csv"
 
@@ -90,6 +114,8 @@ def load_dataframe(csv_path: str | Path | None = None) -> pd.DataFrame:
         return df
     missing = [c for c in FEATURE_COLS + [LABEL_COL] if c not in df.columns]
     if missing:
+        if has_kfre_features(df):
+            return df  # KFRE-schema frame (rule-baseline track) — valid as-is
         raise ValueError(f"Missing expected columns in {path}: {missing}")
     return df
 
@@ -114,10 +140,11 @@ def load_clinic_frames(clinics_dir: str | Path | None = None) -> list[pd.DataFra
 def to_xy(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     """Convert a (possibly per-practice) dataframe to model-ready (X, y) arrays.
 
-    The single preprocessing entry point for both schemas, dispatched on the label column:
+    The single preprocessing entry point, dispatched on the label/feature columns:
     - canonical (`ckd_incident`, extract_features.sql §9) — `_canonical_to_xy`
     - non-CKD track (`melanoma` / `afib`, mapper-emitted) — every remaining column is a
       feature; frames are complete numerics, so no missingness rules apply
+    - KFRE (`ckd_stage3plus` + the 8 Tangri inputs, `data/clinics_nhanes_kfre/`) — `_kfre_to_xy`
     - synthetic (`ckd_stage3plus`) — the rules below
 
     Synthetic missingness: structural zero for flags / years_since; median + indicator for any
@@ -138,6 +165,8 @@ def to_xy(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
             f"{CANONICAL_LABEL_COL!r} (canonical), nor any of {GENERIC_LABEL_COLS} "
             f"(non-CKD track) — cannot dispatch preprocessing."
         )
+    if not set(FEATURE_COLS).issubset(df.columns) and has_kfre_features(df):
+        return _kfre_to_xy(df)
 
     df = df.copy()
 
@@ -184,4 +213,23 @@ def _canonical_to_xy(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
 
     X = pd.concat(feature_frames, axis=1).to_numpy(dtype="float32")
     y = df[CANONICAL_LABEL_COL].to_numpy(dtype="int64")
+    return X, y
+
+
+def _kfre_to_xy(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """KFRE-schema frame -> model-ready (X, y) for the *logreg comparators*.
+
+    The raw 8 rule inputs (no unit transforms — the equation's own scaling lives in `kfre.py`,
+    and the comparators' StandardScaler handles the rest), with the same lab missingness rule as
+    the other schemas: median impute + binary indicator per lab (§3a). `age_years` / `male` are
+    structurally complete in the mapper's output. X order: the 8 raw inputs, then one
+    `<lab>__missing` indicator per lab (14 columns = KFRE_NUM_FEATURES).
+    """
+    base = df[KFRE_FEATURE_COLS].astype("float32").copy()
+    indicators = []
+    for col in KFRE_LAB_COLS:
+        indicators.append(base[col].isna().astype("float32").rename(f"{col}__missing"))
+        base[col] = base[col].fillna(base[col].median()).fillna(0.0)
+    X = pd.concat([base, *indicators], axis=1).to_numpy(dtype="float32")
+    y = df[LABEL_COL].to_numpy(dtype="int64")
     return X, y
