@@ -163,6 +163,13 @@ def _run_weight_sharing(name, locals_, num_rounds, quiet, epochs, report) -> lis
 def _run_fedmosaic(locals_, frames, config, num_rounds, quiet, epochs, report) -> list[dict]:
     """FedMosaic — predictions + expertise on a shared public cohort; no model ever shared."""
     X_public = _public_features(config)
+    if X_public.shape[1] != locals_[0].n_features:
+        raise ValueError(
+            f"FedMosaic's shared public cohort comes from data.synthesize."
+            f"generate_public_cohort (V1 schema, {X_public.shape[1]} features) but these "
+            f"clinics carry {locals_[0].n_features} — no public cohort exists in this "
+            f"schema, so FedMosaic cannot run here."
+        )
     strategy = FedMosaic(evaluate_metrics_aggr_fn=weighted_and_worst)
     practices = [
         MosaicPractice(loc, X_public, lr=LEARNING_RATE, epochs=epochs) for loc in locals_

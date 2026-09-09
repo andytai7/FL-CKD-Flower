@@ -30,8 +30,9 @@ import numpy as np
 from flwr.common.logger import log as _flwr_log  # noqa: F401  (imported to force logger setup)
 
 from centralized import run_centralized
-from data import load_clinic_frames, load_partition, to_xy
-from data.loader import FEATURE_COLS
+from data import has_kfre_features, load_clinic_frames, load_partition, to_xy
+from data.loader import FEATURE_COLS, KFRE_FEATURE_COLS
+from kfre import evaluate_frames as kfre_evaluate_frames
 from models.protocols import BASELINES, PROTOCOLS
 from simulate import run_simulation
 
@@ -42,6 +43,27 @@ logging.getLogger("flwr").setLevel(logging.ERROR)
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 # Reported alongside the curves: how many rounds each protocol needs to first reach this AUROC.
 TARGET_AUROC = 0.80
+# The real-data KFRE federation (Tangri rule head-to-head). Build once via
+# `uv run python -m data.external.nhanes_to_clinics`.
+KFRE_CLINICS_DIR = Path(__file__).resolve().parent / "data" / "clinics_nhanes_kfre"
+
+
+def _dataset_frames(dataset: str, practices: int, seed: int) -> list:
+    """Per-practice frames for a benchmark dataset (flat = Dirichlet partition of the CSV)."""
+    if dataset == "clinics":
+        return load_clinic_frames()
+    if dataset == "nhanes-kfre":
+        return load_clinic_frames(KFRE_CLINICS_DIR)
+    return [load_partition(i, practices, seed=seed) for i in range(practices)]
+
+
+def _dataset_clinics_dir(dataset: str):
+    """The `clinics_dir` argument run_simulation expects for each dataset."""
+    if dataset == "clinics":
+        return True
+    if dataset == "nhanes-kfre":
+        return str(KFRE_CLINICS_DIR)
+    return None
 
 
 def _history(dataset: str, protocol: str, rounds: int, practices: int, seed: int) -> list[dict]:
@@ -51,7 +73,7 @@ def _history(dataset: str, protocol: str, rounds: int, practices: int, seed: int
             num_practices=practices,
             num_rounds=rounds,
             quiet=True,
-            clinics_dir=True if dataset == "clinics" else None,
+            clinics_dir=_dataset_clinics_dir(dataset),
             protocol=protocol,
             seed=seed,
         )
@@ -91,14 +113,28 @@ def _summarize(history: list[dict]) -> dict:
 def _ceilings(dataset: str, seed: int) -> dict:
     """Pooled-data ceiling on the SAME dataset — the only valid 'price of privacy' reference."""
     with contextlib.redirect_stdout(io.StringIO()):
-        return {"logreg": run_centralized(seed=seed, clinics=(dataset == "clinics"))}
+        return {"logreg": run_centralized(
+            seed=seed,
+            clinics=(dataset == "clinics"),
+            clinics_dir=str(KFRE_CLINICS_DIR) if dataset == "nhanes-kfre" else None,
+        )}
+
+
+def _kfre_rule_baseline(dataset: str, practices: int, seed: int) -> dict | None:
+    """The Tangri KFRE rule scored on this dataset's per-practice held-out splits.
+
+    Only defined when the dataset carries the 8 rule inputs (today: nhanes-kfre) — the fixed
+    published score the federated logreg has to beat (kfre.py). Splits are the clients' own
+    `_local_split`, so the rule and every protocol row below it see identical held-out rows.
+    """
+    frames = _dataset_frames(dataset, practices, seed)
+    if not all(has_kfre_features(df) for df in frames):
+        return None
+    return kfre_evaluate_frames(frames, seed=seed)
 
 
 def _cohort_shape(dataset: str, practices: int, seed: int) -> dict:
-    frames = (
-        load_clinic_frames() if dataset == "clinics"
-        else [load_partition(i, practices, seed=seed) for i in range(practices)]
-    )
+    frames = _dataset_frames(dataset, practices, seed)
     sizes, rates = [], []
     for df in frames:
         _, y = to_xy(df)
@@ -109,7 +145,7 @@ def _cohort_shape(dataset: str, practices: int, seed: int) -> dict:
         "patients_total": int(sum(sizes)),
         "practice_sizes": sizes,
         "ckd_rate_per_practice": [round(r, 3) for r in rates],
-        "features": FEATURE_COLS,
+        "features": KFRE_FEATURE_COLS if has_kfre_features(frames[0]) else FEATURE_COLS,
     }
 
 
@@ -119,12 +155,14 @@ def main() -> None:
     parser.add_argument("--practices", type=int, default=12,
                         help="only used for the flat-CSV partitioned dataset")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--dataset", default="both", choices=["both", "clinics", "flat"])
+    parser.add_argument("--dataset", default="both", choices=["both", "clinics", "flat", "nhanes-kfre"],
+                        help="'nhanes-kfre' runs the real-data Tangri-KFRE federation "
+                             "(data/clinics_nhanes_kfre/; build via the NHANES mapper) and adds "
+                             "the published rule as a comparator.")
     parser.add_argument("--out", default=str(RESULTS_DIR / "benchmark.json"))
     args = parser.parse_args()
 
     datasets = ["clinics", "flat"] if args.dataset == "both" else [args.dataset]
-    comparators = [*PROTOCOLS, *BASELINES]
 
     results: dict = {
         "config": {
@@ -143,8 +181,29 @@ def main() -> None:
         entry: dict = {
             "cohort": _cohort_shape(dataset, args.practices, args.seed),
             "centralized_ceiling": _ceilings(dataset, args.seed),
+            # The published clinical rule, on the clients' own held-out splits (null when the
+            # dataset lacks the KFRE inputs — it is not a trainable/federated comparator).
+            "kfre_rule_baseline": _kfre_rule_baseline(dataset, args.practices, args.seed),
             "runs": {},
         }
+        rule = entry["kfre_rule_baseline"]
+        if rule is not None:
+            print(
+                f"  KFRE rule (fixed, Tangri 8-var):  AUROC={rule['auc']:.3f}  "
+                f"worst={rule['auc_worst']:.3f}  sens@10%={rule['sensitivity_at_10pct']:.3f}  "
+                f"coverage={rule['coverage']:.0%}"
+            )
+        comparators = [*PROTOCOLS, *BASELINES]
+        if dataset == "nhanes-kfre":
+            # FedMosaic's shared public cohort is V1-schema only (run_protocol raises on the
+            # width mismatch); nothing comparable exists for the KFRE schema.
+            comparators = ["fedprox", *BASELINES]
+            entry["runs"]["fedmosaic"] = {
+                "kind": "protocol",
+                "skipped": "public cohort U is V1-schema only "
+                           "(data.synthesize.generate_public_cohort); no KFRE-schema public cohort",
+            }
+            print("  fedmosaic  [protocol]  SKIPPED: public cohort U is V1-schema only")
         for name in comparators:
             started = time.perf_counter()
             history = _history(dataset, name, args.rounds, args.practices, args.seed)

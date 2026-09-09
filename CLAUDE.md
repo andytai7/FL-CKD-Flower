@@ -150,10 +150,11 @@ from it.
 | `dpsgd.py` | Patient-level DP-SGD (Poisson sampling, per-sample clipping, Gaussian noise) + the in-process runner that emulates SecAgg masked-sum semantics over Flower's real FedAvg. |
 | `equity.py` | Era 14 sweep — census-shaped per-clinic ε at a frozen clinic-mean budget → `uv run ckd-equity` → `results/equity.json`. Registration + verdict: `docs/ERAS.md` §3–§4. |
 | `orchestrator.py` | Rule-based server agent: the Level-3 ε orchestrator (deterministic if-then logic + one accountant inversion; no LLM). `plan()` standardises per-clinic (batch, σ) so every clinic composes to the same target ε; `DpsgdOrchestrator` is the server-brain `FedAvg` subclass; `uniform_settings_audit` shows why uniform DP-SGD configs are incoherent across heterogeneous N. |
-| `centralized.py` | Pooled-data ceiling baselines → `uv run ckd-baseline`. **Use `--clinics` when comparing against `--clinics` runs.** |
+| `centralized.py` | Pooled-data ceiling baselines → `uv run ckd-baseline`. **Use `--clinics`/`--clinics-dir` when comparing against clinics runs.** |
+| `kfre.py` | The rule-based clinical baseline: the published Tangri 8-variable Kidney Failure Risk Equation (MDCalc calc/10045), fixed coefficients, nothing trained, nothing federated → `uv run ckd-kfre`. Scored on the clients' own held-out splits so it sits exactly beside every protocol row (§4). |
 | `messages.py` | Single definition of the Flower `Message` shapes the in-process runners exchange. |
 | `task.py` | Local `StandardScaler`, the imbalanced-data metrics, and the T2.5 `fairness_metrics`. |
-| `data/` | `loader.py` (+ §3 missingness rules), `partition.py` (Dirichlet non-IID), `synthesize.py` (per-clinic generator + the FedMosaic public cohort), `fhir_loader.py` (the production FHIR path: canonical-contract preprocessor, de-identified, §3b), `synthesize_v2.py` (hardness-calibrated V2 generator, seven knobs + prevalence bisection), `external/` (raw-payload provenance `SOURCES.md` + V1-schema mappers for NHANES / UCI CKD / Synthea; raw downloads are gitignored), `VERSIONS.md` + `manifest_v1.sha256` (V1 frozen: `sha256sum -c` audits 48 entries). Also holds the datasets: V1 (`synthetic_ckd_data.csv`, `clinics/`, `clinics_ladder/` — frozen), `clinics_v2_*/` (eight hardness suites), `clinics_{nhanes,nhanes_s,uci,synthea}/` (real data in the V1 schema). |
+| `data/` | `loader.py` (+ §3 missingness rules + the KFRE schema branch), `partition.py` (Dirichlet non-IID), `synthesize.py` (per-clinic generator + the FedMosaic public cohort), `fhir_loader.py` (the production FHIR path: canonical-contract preprocessor, de-identified, §3b), `synthesize_v2.py` (hardness-calibrated V2 generator, seven knobs + prevalence bisection), `external/` (raw-payload provenance `SOURCES.md` + V1-schema mappers for NHANES / UCI CKD / Synthea — the NHANES mapper additionally writes the KFRE federation below; raw downloads are gitignored), `VERSIONS.md` + `manifest_v1.sha256` (V1 frozen: `sha256sum -c` audits 48 entries). Also holds the datasets: V1 (`synthetic_ckd_data.csv`, `clinics/`, `clinics_ladder/` — frozen), `clinics_v2_*/` (eight hardness suites), `clinics_{nhanes,nhanes_s,uci,synthea}/` (real data in the V1 schema), `clinics_nhanes_kfre/` (real NHANES labs in the KFRE schema, §4).…
 | `models/` | `base.py`, `logreg.py` — the only model class in the codebase. |
 | `models/protocols/` | The protocol benchmark: `common.py` (explicit logistic regression), `fedmosaic.py` (the `Strategy` subclass). |
 | `model_artifact.py` | Train the federated global logreg (Flower FedAvg via `simulate.fedavg`) and export it as JSON → `ckd-export-model` → `models/global_model.json`; holds the `Scorer` for one-patient inference. |
@@ -241,6 +242,46 @@ neither `flwr.serverapp.strategy` nor `flwr.server.strategy` has it); it exists 
 Baselines as a standalone PyTorch reproduction project. FedProx is the shipped alternative for
 client-drift correction.
 
+### The rule-based clinical baseline (KFRE)
+
+The published **Kidney Failure Risk Equation** (Tangri et al., *JAMA* 2011;301(15):1553-1559,
+8-variable model), exactly as programmed by [MDCalc calc/10045](https://www.mdcalc.com/calc/10045/kidney-failure-risk-calculator):
+
+```
+P(kidney failure within 5 years) = 1 - S0^x
+x = exp(-0.1992*(age/10 - 7.036) + 0.1602*(male - 0.5642) - 0.4919*(eGFR/5 - 7.222)
+        + 0.3364*(ln ACR - 5.137) - 0.3441*(albumin - 3.997) + 0.2604*(phosphorus - 3.916)
+        - 0.07354*(bicarbonate - 25.57) - 0.2228*(calcium - 9.355))
+S0 = 0.9096 (North America) / 0.9245 (non-North America); ACR in mg/g, albumin g/dL,
+phosphorus/bicarbonate/calcium in mg/dL resp. mEq/L.
+```
+
+- **Rule-2 scoping.** KFRE is not a model class and joins nothing: it is a fixed published score
+  used **only as an evaluation reference** — one level stricter than `centralized.py`'s pooled
+  ceiling (which at least trains the logreg). The deployed federated model set stays logreg-only.
+- **Dataset.** `data/clinics_nhanes_kfre/` — real NHANES 2011-2018 labs in the KFRE schema
+  (21,102 participants, the same 8 cycle×sex practices as the other NHANES federations, ~98%
+  complete-case), written by `data/external/nhanes_to_clinics.py`. The logreg comparators train
+  on the same 8 raw inputs via the loader's KFRE schema branch (median-impute + missing
+  indicators); the rule scores complete cases only and reports `coverage`.
+- **Identical rows.** `kfre.evaluate_frames` reuses `client_app._local_split(seed, pid)`, so the
+  rule is scored on exactly the held-out rows every federated protocol row sees.
+- **Commands.** `uv run ckd-kfre` (standalone rule metrics); `uv run ckd-benchmark --dataset
+  nhanes-kfre` writes `results/benchmark_nhanes_kfre.json` with the rule beside the pooled
+  ceiling and every protocol row. FedMosaic is recorded as skipped there — its shared public
+  cohort is V1-schema only (`run_protocol` raises on the width mismatch elsewhere).
+- **⚠️ Proxy label.** The federation's label stays `ckd_stage3plus` (eGFR<60 *prevalence*);
+  KFRE targets 5-year *progression* among CKD patients. Because the label is eGFR-thresholded
+  and eGFR is the rule's dominant input, the rule's AUROC ≈ 0.99 here measures discrimination of
+  prevalent CKD, not its actual clinical use — the honest "beat the rule" test needs a
+  longitudinal progression label. `extract_features.sql` also lacks ACR/albumin/phosphate/
+  bicarbonate/calcium, so the production contract must be extended before KFRE can score the
+  canonical task. Both gaps close with real data; the code path is unchanged.
+- First numbers (seed 42): rule AUROC 0.994 (worst practice 0.988) vs federated FedAvg logreg
+  0.995 (worst 0.992) on `nhanes-kfre`; rule sensitivity 0.033 at the 0.5 cutoff (its scores are
+  5-year risks, so `sensitivity_at_10pct` is also reported) — the federation beats the rule while
+  giving usable per-patient probabilities.
+
 ### Non-IID design
 
 `data/synthesize.py` builds clinics from five clinically interpretable archetypes (urban-young,
@@ -279,6 +320,10 @@ uv run ckd-simulate --clinics             # logreg via FedAvg, non-IID
 uv run ckd-simulate --protocol fedmosaic --clinics
 uv run ckd-baseline --clinics             # pooled ceiling on the SAME data
 uv run ckd-benchmark --rounds 20          # full protocol benchmark -> results/
+# KFRE rule-based clinical baseline (real NHANES labs; build federation once):
+uv run python -m data.external.nhanes_to_clinics   # writes data/clinics_nhanes_kfre/ (+ V1 dirs)
+uv run ckd-kfre                           # Tangri 8-var rule metrics on the KFRE federation
+uv run ckd-benchmark --dataset nhanes-kfre  # rule + ceiling + protocols head-to-head -> results/
 uv run ckd-privacy --seeds 42 43 44 45 46 # central + local DP sweeps, SecAgg probe -> results/
 uv run ckd-audit   --seeds 42 43 44 45 46 # membership-inference audit (L6) -> results/
 
