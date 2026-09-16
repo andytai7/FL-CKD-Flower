@@ -213,7 +213,7 @@ and gets the model's P(CKD stage ≥ 3). Stdlib-only, 127.0.0.1 by default, and 
 
 ```bash
 uv run ckd-export-model     # 10 rounds of Flower FedAvg over data/clinics -> models/global_model.json
-uv run ckd-web --port 8080  # http://127.0.0.1:8080
+uv run ckd-web --port 9000  # http://127.0.0.1:9000  (8080 is the Helios FHIR server's)
 ```
 
 Model and scaler come from the exported artifact (sandbox reference scaler on the pooled synthetic
@@ -221,6 +221,27 @@ cohort — a deployment would pair the model with the practice-local scaler). �
 data — not a medical device, not for clinical decisions.
 
 ---
+
+## Helios FHIR server (SQL on FHIR)
+
+The consortium FHIR server is **Helios FHIR** (`HeliosSoftware/hfs`) — *SQL on FHIR*. Since
+2026-09-11 the repo builds **only from Helios** (CLAUDE.md §0.9): every practice's cohort is read
+from its own Helios server by `data/fhir_loader.py` (FHIR R4 searches) or by the SQL-on-FHIR
+ViewDefinitions in `data/helios.py` (run by Helios' `pysof` engine), both reproducing the identical
+[`extract_features.sql`](extract_features.sql) contract.
+
+The sandbox hosts a local Helios instance seeded with the committed synthetic cohort:
+
+```bash
+uv run ckd-helios            # download binary -> serve on 127.0.0.1:8080 -> seed synthetic data
+uv run ckd-helios extract    # run the canonical landmark extraction against it (round-trip proof)
+uv run ckd-helios sql        # run the SQL-on-FHIR ViewDefinitions -> data/helios/out/
+```
+
+Seeding is deterministic (CLAUDE.md rule 6): the fields the synthetic CSV carries — age,
+comorbidity flags, and the `ckd_stage3plus` label — are preserved verbatim; the canonical-only
+fields (sex, eGFR/HbA1c, encounter dates) are synthesised from a fixed seed so the contract
+round-trips exactly.
 
 ## Deploying
 
@@ -240,7 +261,7 @@ and **not** committed anywhere:
 | SuperLink Control API address (`host:9093`) | whoever runs the central host |
 | `ca.crt` of the deployment CA | the SuperLink admin (server cert/key too, if you host it) |
 | One P-384 key pair per practice, public half registered | generated on each practice machine; registered centrally with `flwr supernode register` |
-| `fhir-base-url` per practice | the practice's own FHIR server — only for `data-source=fhir` |
+| `fhir-base-url` per practice | the practice's own **Helios FHIR server** (sandbox: `uv run ckd-helios`) — only for `data-source=fhir` |
 
 ### Run order
 
@@ -271,7 +292,7 @@ and **not** committed anywhere:
      --superlink superlink.example.org:9092 \
      --root-certificates ca.crt \
      --auth-supernode-private-key praxis_01.key --auth-supernode-public-key praxis_01.pub \
-     --node-config "partition-id=0 num-partitions=25 fhir-base-url='http://localhost:8080/fhir'"
+     --node-config "partition-id=0 num-partitions=25 fhir-base-url='http://127.0.0.1:8080'"
    ```
 
 4. **Operator** points the CLI at the federation and starts the run. `flwr run` builds the app
@@ -296,12 +317,13 @@ and **not** committed anywhere:
 no-TLS rehearsal on one machine — do this before touching a practice — is in
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#local-rehearsal--do-this-before-touching-a-practice).
 
-Each SuperNode can read its cohort from the practice's own **FHIR server** (`data-source=fhir`)
-instead of a CSV; the mapping lives in `data/fhir_loader.py` and emits the **canonical
+Each SuperNode can read its cohort from the practice's own **Helios FHIR server**
+(`data-source=fhir`) instead of a CSV; the mapping lives in `data/fhir_loader.py` (or the
+SQL-on-FHIR ViewDefinitions in `data/helios.py`) and emits the **canonical
 `extract_features.sql` contract** — labs, `geschlecht`, and the incidence label — de-identified
 at the source: no identifier is ever read, rows are keyed positionally in a hash order, and an
 optional per-practice `pseudonym-salt` (`--node-config`) enables the salted-HMAC join key named in
 [PRIVACY.md](docs/PRIVACY.md) §2. `to_xy` dispatches on the schema, so models and the client
 builder consume either path unchanged (CLAUDE.md §3b: the two schemas are different prediction
 tasks). Rehearse an extraction on the practice box with
-`uv run ckd-fhir-extract http://localhost:8080/fhir`.
+`uv run ckd-fhir-extract http://127.0.0.1:8080` (sandbox: `uv run ckd-helios extract`).

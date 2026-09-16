@@ -26,6 +26,9 @@ dependencies = [
     "pandas>=2.0.0",
     "numpy>=1.24.0",
     "dp-accounting>=0.6.0",
+    # Helios SQL-on-FHIR engine (HeliosSoftware/hfs): the "our query is SQL on FHIR" mechanism
+    # that runs the ViewDefinitions over Helios-hosted resources (data/helios.py `sql`).
+    "pysof>=0.2.1",
 ]
 
 [project.optional-dependencies]
@@ -61,13 +64,16 @@ ckd-equity = "equity:main"
 # Run: uv run ckd-phasemap   (smoke: uv run ckd-phasemap --quick)
 ckd-phasemap = "phasemap:main"
 # Practice-side FHIR preprocessor rehearsal: canonical extract_features.sql frame from one
-# practice's own FHIR server, de-identified. Run: uv run ckd-fhir-extract http://localhost:8080/fhir
+# practice's Helios FHIR server, de-identified. Run: uv run ckd-fhir-extract http://127.0.0.1:8080
 ckd-fhir-extract = "data.fhir_loader:main"
+# Helios FHIR server host + synthetic seed (doctrine CLAUDE.md §0.9: only build from Helios).
+# Run: uv run ckd-helios [up|serve|seed|extract|sql]
+ckd-helios = "data.helios:main"
 # Train the federated global model and export it as JSON for the demo webapp.
 # Run: uv run ckd-export-model
 ckd-export-model = "model_artifact:main"
 # Local physician demo: input patient details, get the federated model's risk score.
-# Run: uv run ckd-web --port 8080   (requires `ckd-export-model` first)
+# Run: uv run ckd-web --port 9000   (8080 belongs to the Helios FHIR server; requires ckd-export-model)
 ckd-web = "webapp:main"
 
 # Flat layout: data/ and models/ packages plus top-level app modules at the repo root.
@@ -104,8 +110,9 @@ iid = false                 # set true for an IID even split
 class-weight-balanced = true
 seed = 42
 
-# Where each SuperNode reads its patients from: "csv" partitions the flat synthetic file,
-# "fhir" queries that practice's own FHIR server (fhir-base-url comes from --node-config).
+# Where each SuperNode reads its patients from: "csv" partitions the flat synthetic file (the
+# pre-migration evaluation baseline only), "fhir" queries that practice's Helios FHIR server
+# (fhir-base-url comes from --node-config; sandbox host: uv run ckd-helios).
 data-source = "csv"
 # Note the two sources are different tasks (CLAUDE.md §3b): "csv" = synthetic 10-feature
 # prevalence schema; "fhir" = canonical extract_features.sql contract, de-identified in

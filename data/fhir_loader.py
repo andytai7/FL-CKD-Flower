@@ -1,9 +1,10 @@
 """Read one practice's cohort from its local HL7 FHIR server (R4).
 
-This is the production data path (Projektantrag AP1/T1.2: each practice runs its own FHIR
-database; `extract_features.sql` is the Tomedo→PostgreSQL equivalent for practices not yet on
-FHIR). The SuperNode runs this on the practice's own machine — the resulting rows are used to fit
-the local model and are **never transmitted**; only weights leave (immutable rule 3).
+This is the production data path (Projektantrag AP1/T1.2: each practice runs its own **Helios
+FHIR server** — CLAUDE.md §0.9; `extract_features.sql` is the Tomedo→PostgreSQL equivalent for
+practices not yet on FHIR). The SuperNode runs this on the practice's own machine — the resulting
+rows are used to fit the local model and are **never transmitted**; only weights leave (immutable
+rule 3).
 
 The frame it builds follows the **canonical contract of `extract_features.sql`, not the synthetic
 10-feature schema** (CLAUDE.md §3b): German column names, eGFR/HbA1c labs, `geschlecht`, and a CKD
@@ -495,10 +496,10 @@ def load_practice_frame(
     stichtag: date | None = None,
     pseudonym_salt: str | None = None,
 ) -> pd.DataFrame:
-    """Query one practice's FHIR server and return the canonical landmark frame.
+    """Query one practice's Helios FHIR server and return the canonical landmark frame.
 
     Args:
-        base_url: FHIR base, e.g. ``http://localhost:8080/fhir``.
+        base_url: FHIR base, e.g. ``http://127.0.0.1:8080`` (the practice's Helios server).
         page_size: `_count` per search page.
         timeout: per-request timeout in seconds.
         stichtag: the landmark t0 (fixed for reproducible runs); defaults to
@@ -540,7 +541,7 @@ def main() -> None:
             "practice's local FHIR server. De-identified: no identifiers are read or emitted."
         )
     )
-    parser.add_argument("base_url", help="FHIR base URL, e.g. http://localhost:8080/fhir")
+    parser.add_argument("base_url", help="FHIR base URL, e.g. http://127.0.0.1:8080")
     parser.add_argument("--page-size", type=int, default=500)
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument(

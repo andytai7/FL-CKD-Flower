@@ -45,9 +45,20 @@ def _split(X, y, seed, test_frac=0.2):
     return X[:split], y[:split], X[split:], y[split:]
 
 
-def run_centralized(seed: int = 42, local_epochs: int = 50, *, clinics: bool = False) -> dict:
-    """Train the pooled logistic regression and return its held-out metrics (the ceiling)."""
-    X, y = to_xy(load_pooled(clinics))
+def run_centralized(
+    seed: int = 42,
+    local_epochs: int = 50,
+    *,
+    clinics: bool = False,
+    frame: pd.DataFrame | None = None,
+) -> dict:
+    """Train the pooled logistic regression and return its held-out metrics (the ceiling).
+
+    Pass `frame` to raise the ceiling on an arbitrary (already-extracted) canonical frame —
+    e.g. the pooled Helios cohort — instead of the on-disk clinics/flat data.
+    """
+    pooled = load_pooled(clinics) if frame is None else frame
+    X, y = to_xy(pooled)
     X_train, y_train, X_test, y_test = _split(X, y, seed)
 
     # Standardized features + warm-started partial_fit (mirrors the FedAvg path).

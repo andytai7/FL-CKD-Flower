@@ -378,6 +378,7 @@ dependencies = [
     { name = "flwr", extra = ["simulation"] },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "pysof" },
     { name = "scikit-learn" },
 ]
 
@@ -403,6 +404,7 @@ requires-dist = [
     { name = "nbconvert", marker = "extra == 'notebook'", specifier = ">=7.0.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "pandas", specifier = ">=2.0.0" },
+    { name = "pysof", specifier = ">=0.2.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "scikit-learn", specifier = ">=1.3.0" },
@@ -2389,6 +2391,30 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f3/91/9c6ee907786a473bf81c5f53cf703ba0957b23ab84c264080fb5a450416f/pyparsing-3.3.2.tar.gz", hash = "sha256:c777f4d763f140633dcb6d8a3eda953bf7a214dc4eff598413c070bcdc117cbc", size = 6851574, upload-time = "2026-01-21T03:57:59.36Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/bd/c038d7cc38edc1aa5bf91ab8068b63d4308c66c4c8bb3cbba7dfbc049f9c/pyparsing-3.3.2-py3-none-any.whl", hash = "sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d", size = 122781, upload-time = "2026-01-21T03:57:55.912Z" },
+]
+
+[[package]]
+name = "pysof"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/64/85/3906522680c95366ce2c01a573912441267dbbca78a5a6023a010eb072e5/pysof-0.2.1.tar.gz", hash = "sha256:9bb1b22aba296fbe9e1d6a04aa0da46f5a4d6267841b96a4a029f229b136bb84", size = 25370613, upload-time = "2026-06-25T06:52:07.651Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fc/a7/c9d6de50dbd47a2c763e74fe2099463722de05dfa5ae06664fda59c0bb30/pysof-0.2.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:090d15a5e16b76c5403edaef4df0f8a7406352934ebef63e8f15a4800bebc5d2", size = 30388230, upload-time = "2026-06-25T06:50:46.258Z" },
+    { url = "https://files.pythonhosted.org/packages/43/f9/8eb77951819755ee1334e39f2eac0764a0d42e36a3cd65a3d96389767ad5/pysof-0.2.1-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:9157ec10da6e1021df1dc1966cd35581826baa91e0b8cf6f8f187ba3aefdb65f", size = 35625569, upload-time = "2026-06-25T06:50:51.611Z" },
+    { url = "https://files.pythonhosted.org/packages/ca/25/42d078b66b1a4e14fe699e60bcc00df5815561d3145d4c05ab8af9b8b35b/pysof-0.2.1-cp311-cp311-manylinux_2_34_x86_64.whl", hash = "sha256:fafbea5780d546be8663593567315b134d7a1bf26ac4ae11cb56e44783790567", size = 36878437, upload-time = "2026-06-25T06:50:56.696Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/73/b0f68a3cb39f6cd96b5d711282b5d579f49f32b440ff2ecc268cfa11c731/pysof-0.2.1-cp311-cp311-win_amd64.whl", hash = "sha256:2d36ce52857961c23ac95bbffc4c920c2a30b121791c7e2af57d231fe9447bd4", size = 40833146, upload-time = "2026-06-25T06:51:02.058Z" },
+    { url = "https://files.pythonhosted.org/packages/96/77/12dee9b5554916bbddaca64496a084081fa98df55c2efe363cd059aa7059/pysof-0.2.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:a7e92f084fe3d440e7e2fd690094a94ba5150a81f0f3d1f33d8486a0da4aa627", size = 30373580, upload-time = "2026-06-25T06:51:06.778Z" },
+    { url = "https://files.pythonhosted.org/packages/04/f8/ba3b0653699156a40e1437362db0a271f78b4c8ca71b4b88726f61620a1e/pysof-0.2.1-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:fd4dc24842614f5546232586948b55f6840a5370d7df5aaee2b9cadb726d1b5e", size = 35623853, upload-time = "2026-06-25T06:51:11.824Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/e5/2c1950aabb512857a8068b7af9afe1afe53c962a393a037ffceb672bc300/pysof-0.2.1-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:c367725b001c887f83c93eb6098858a773bcd777fc0ce1208a6337f76bf37582", size = 36876395, upload-time = "2026-06-25T06:51:16.789Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/43/9bb2b6115924103119e0aa2067e38e01128b01a55787cd2095340857c212/pysof-0.2.1-cp312-cp312-win_amd64.whl", hash = "sha256:79a6b1648cd7f2b3b82f6fb725aa5ef121450383c3176bbde1095acfbf498431", size = 40810057, upload-time = "2026-06-25T06:51:22.263Z" },
+    { url = "https://files.pythonhosted.org/packages/23/b8/97baa77ebfd0d61dcd2dd315a11f65cabdd094d0f5ce854de9fb879ea253/pysof-0.2.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:6123cc9efc7dca7205c0818100316c09ff79249e2666ad3e5b7f437094e5f9bb", size = 30375287, upload-time = "2026-06-25T06:51:26.965Z" },
+    { url = "https://files.pythonhosted.org/packages/38/8d/f4af505e493018d2c60be4fd3c7912f1985a15da3f34f09cbcfb1fb6d5f3/pysof-0.2.1-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:0b48b68aa1d22245e85bf9c81ed39617a3d7c06ac7994da490a2509dff1791c0", size = 35622280, upload-time = "2026-06-25T06:51:31.88Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/71/4d0602c581def0f3a8155e1458907387ce3bda69bcc0133ca72c7e5053db/pysof-0.2.1-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:ea552d54adbea5bbf27cd67dedc3ac53f5d68425e2075d55016b8b36dbe65e81", size = 36875806, upload-time = "2026-06-25T06:51:37.665Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/68/abb3c49899a43b2558238fb2ab2a9c418e4c095fae426afe8667cb024a50/pysof-0.2.1-cp313-cp313-win_amd64.whl", hash = "sha256:5e586101aa7ad269f4b9d184aa19808baa7492ae7fd1eaf439f51ea1a023ab19", size = 40810423, upload-time = "2026-06-25T06:51:43.204Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/6c/4dbe88d23c38e6b4877551656b42ffc3f9dec5a5c21b9d4e836fc9840e31/pysof-0.2.1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:f494d0177a939e955dedbad3a58554e6c10aab8179b90a3030bd664b847d63a0", size = 30380867, upload-time = "2026-06-25T06:51:47.862Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/d2/250fd569c663aebdcdc5604a05c73a34538541449ea13385cb9769899516/pysof-0.2.1-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:b65f5f0e916290e6c701b391a17c14c894b3a273a36e7d0519d5e6d31ee9f0c3", size = 35623356, upload-time = "2026-06-25T06:51:52.628Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/1a/95af0a87fba5f76995fadfd411214683ad4e39efff7b3f9da8425ac9feae/pysof-0.2.1-cp314-cp314-manylinux_2_34_x86_64.whl", hash = "sha256:e90c4ac2362cc7db73beb0aa40bdbab311334dc547f10be2623b5e04e37ec433", size = 36882547, upload-time = "2026-06-25T06:51:57.684Z" },
+    { url = "https://files.pythonhosted.org/packages/19/bc/c5b398cc4386ec2612a0aab4b73214acff65105d2b9a2cd23b118a9bdc87/pysof-0.2.1-cp314-cp314-win_amd64.whl", hash = "sha256:45e4fba603f78b38ba40e9957dff69f4b74f809767d96f9426ae00e78b7fcb71", size = 40796828, upload-time = "2026-06-25T06:52:02.999Z" },
 ]
 
 [[package]]

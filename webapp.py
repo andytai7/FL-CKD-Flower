@@ -187,7 +187,8 @@ def make_handler(scorer: Scorer):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Local physician demo webapp for the federated CKD model.")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--port", type=int, default=9000,
+                        help="listen port (8080 is reserved for the Helios FHIR server)")
     parser.add_argument("--model", type=Path, default=ARTIFACT_PATH, help="exported model artifact")
     args = parser.parse_args()
 
