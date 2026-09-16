@@ -107,7 +107,7 @@ def build_client(context: Context) -> CKDPractice:
     """Build this node's client from whichever data source the run is configured with.
 
     `data-source = "csv"` (default) partitions the flat synthetic CSV; `"fhir"` queries this
-    practice's own FHIR server. Either way the rows are loaded locally and never transmitted.
+    practice's own Helios FHIR server. Either way the rows are loaded locally and never transmitted.
 
     The two sources are different prediction tasks: `"csv"` is the synthetic 10-feature
     prevalence schema; `"fhir"` builds the canonical extract_features.sql contract — 16 model

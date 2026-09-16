@@ -63,6 +63,17 @@
    averaging or the client/server transport still does. Prefer a built-in strategy whenever one
    exists.
 
+9. **🔒 Helios FHIR is the consortium server — from now on we build ONLY from Helios ("SQL on
+   FHIR").** Every practice's cohort comes from its **Helios FHIR server** (`HeliosSoftware/hfs`;
+   sandbox host: `uv run ckd-helios`, module `data/helios.py`), and feature building / extraction /
+   any data plumbing goes through Helios' SQL-on-FHIR queries (Helios `pysof` ViewDefinitions, the
+   `sql` subcommand) or the FHIR R4 searches in `data/fhir_loader.py` — both reproduce the same
+   canonical `extract_features.sql` contract. Do **not** add another FHIR server product, another
+   FHIR stack, or any direct-to-file runtime data source. `data/synthetic_ckd_data.csv` and
+   `data/clinics/` remain only the pre-migration evaluation baseline (§3b): frozen inputs, never a
+   runtime data source. When the sandbox simulates a practice's server, it simulates a **Helios**
+   server.
+
 ---
 
 ## 1. Project overview
@@ -79,6 +90,10 @@ that trains a **chronic kidney disease (CKD) risk model** on **HL7-FHIR–harmon
 data — *the model travels to the data, the patient data never leaves the practice* — coordinated
 with **Flower.ai** (the Antrag records a Letter of Intent from FlowerAI), and hardened with
 **Differential Privacy and Secure Aggregation**.
+
+The consortium FHIR server is **Helios FHIR** (`HeliosSoftware/hfs`) — *SQL on FHIR* — and every
+practice's data path is `data-source=fhir` against its own Helios server (rule 9). This repository
+hosts a local sandbox Helios instance seeded with the synthetic cohort (`uv run ckd-helios`).
 
 Ground truth for all of the above: [`docs/01 Projektantrag Innovationswettbewerb NEXT.IN.NRW.pdf`](docs/).
 
@@ -110,7 +125,7 @@ from it.
 | `centralized.py` | Pooled-data ceiling baselines → `uv run ckd-baseline`. **Use `--clinics` when comparing against `--clinics` runs.** |
 | `messages.py` | Single definition of the Flower `Message` shapes the in-process runners exchange. |
 | `task.py` | Local `StandardScaler`, the imbalanced-data metrics, and the T2.5 `fairness_metrics`. |
-| `data/` | `loader.py` (+ §3 missingness rules), `partition.py` (Dirichlet non-IID), `synthesize.py` (per-clinic generator + the FedMosaic public cohort), `fhir_loader.py` (the production FHIR path: canonical-contract preprocessor, de-identified, §3b). Also holds the datasets. |
+|`data/`|`loader.py` (+ §3 missingness rules), `partition.py` (Dirichlet non-IID), `synthesize.py` (per-clinic generator + the FedMosaic public cohort), `fhir_loader.py` (the production FHIR path: canonical-contract preprocessor, de-identified, §3b), `helios.py` (the Helios FHIR server host + deterministic synthetic seed + SQL-on-FHIR views — rule 9). Also holds the datasets.|
 | `models/` | `base.py`, `logreg.py` — the only model class in the codebase. |
 | `models/protocols/` | The protocol benchmark: `common.py` (explicit logistic regression), `fedmosaic.py` (the `Strategy` subclass). |
 | `model_artifact.py` | Train the federated global logreg (Flower FedAvg via `simulate.fedavg`) and export it as JSON → `ckd-export-model` → `models/global_model.json`; holds the `Scorer` for one-patient inference. |
@@ -232,7 +247,10 @@ there is a global truth to learn. `data/partition.py` provides Dirichlet label p
 uv sync --extra dev --extra notebook      # build/repair the env  (= make setup)
 
 uv run ckd-clinics --clinics 10           # generate the per-clinic datasets -> data/clinics/
-uv run ckd-simulate --clinics             # logreg via FedAvg, non-IID
+uv run ckd-helios                        # host the local Helios FHIR server seeded w/ synthetic cohort
+uv run ckd-helios extract                # run the canonical landmark extraction against it (round-trip proof)
+uv run ckd-helios sql                    # run the SQL-on-FHIR ViewDefinitions (Helios pysof) -> data/helios/out/
+uv run ckd-simulate --clinics            # logreg via FedAvg, non-IID
 uv run ckd-simulate --protocol fedmosaic --clinics
 uv run ckd-baseline --clinics             # pooled ceiling on the SAME data
 uv run ckd-benchmark --rounds 20          # full protocol benchmark -> results/

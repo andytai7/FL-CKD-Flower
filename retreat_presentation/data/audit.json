@@ -1,0 +1,250 @@
+{
+  "config": {
+    "rounds": 20,
+    "seeds": [
+      42,
+      43,
+      44,
+      45,
+      46
+    ],
+    "num_shadow_models": 16,
+    "pass_criterion": "95% CI upper bound of attack AUC <= 0.5 + 0.02",
+    "attacks": [
+      "loss-threshold (Yeom 2018)",
+      "shadow-model (Shokri 2017)"
+    ],
+    "not_covered": [
+      "model inversion",
+      "reconstruction"
+    ]
+  },
+  "positive_control": {
+    "cohort_size": 40,
+    "threshold_attack_auc": 0.6553030303030303,
+    "shadow_attack_auc": 0.6590909090909091,
+    "detects_leakage": true
+  },
+  "membership_inference": [
+    {
+      "mechanism": "none",
+      "noise_multiplier": null,
+      "local_dp_epsilon_per_round": null,
+      "epsilon_composed": null,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "threshold_attack_auc_mean": 0.5011953248077101,
+      "threshold_attack_auc_std": 0.0059792698771133825,
+      "shadow_attack_auc_mean": 0.5017209943471411,
+      "shadow_attack_auc_std": 0.01521960798830747,
+      "threshold_advantage": 0.0023906496154202372,
+      "shadow_advantage": 0.0034419886942822497,
+      "passes": true
+    },
+    {
+      "mechanism": "central-dp",
+      "noise_multiplier": 0.1,
+      "local_dp_epsilon_per_round": null,
+      "epsilon_composed": 1211.7782575788603,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "threshold_attack_auc_mean": 0.501504378648874,
+      "threshold_attack_auc_std": 0.006172993767306272,
+      "shadow_attack_auc_mean": 0.5064113613196183,
+      "shadow_attack_auc_std": 0.009817916389330338,
+      "threshold_advantage": 0.003008757297747966,
+      "shadow_advantage": 0.012822722639236561,
+      "passes": true
+    },
+    {
+      "mechanism": "central-dp",
+      "noise_multiplier": 0.25,
+      "local_dp_epsilon_per_round": null,
+      "epsilon_composed": 244.03553359954904,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "threshold_attack_auc_mean": 0.5023726948382912,
+      "threshold_attack_auc_std": 0.006624002564096719,
+      "shadow_attack_auc_mean": 0.5093806181076823,
+      "shadow_attack_auc_std": 0.009531631935089924,
+      "threshold_advantage": 0.0047453896765823345,
+      "shadow_advantage": 0.01876123621536463,
+      "passes": true
+    },
+    {
+      "mechanism": "central-dp",
+      "noise_multiplier": 0.5,
+      "local_dp_epsilon_per_round": null,
+      "epsilon_composed": 81.11630842505602,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "threshold_attack_auc_mean": 0.5018583773514965,
+      "threshold_attack_auc_std": 0.005743945201140599,
+      "shadow_attack_auc_mean": 0.502415786303401,
+      "shadow_attack_auc_std": 0.016449778388421828,
+      "threshold_advantage": 0.0037167547029930414,
+      "shadow_advantage": 0.004831572606802004,
+      "passes": true
+    },
+    {
+      "mechanism": "central-dp",
+      "noise_multiplier": 1.0,
+      "local_dp_epsilon_per_round": null,
+      "epsilon_composed": 30.12663110385034,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "threshold_attack_auc_mean": 0.5031601566119914,
+      "threshold_attack_auc_std": 0.008322658605783479,
+      "shadow_attack_auc_mean": 0.5060938513576129,
+      "shadow_attack_auc_std": 0.013494768212307178,
+      "threshold_advantage": 0.006320313223982854,
+      "shadow_advantage": 0.012187702715225734,
+      "passes": true
+    },
+    {
+      "mechanism": "central-dp",
+      "noise_multiplier": 2.0,
+      "local_dp_epsilon_per_round": null,
+      "epsilon_composed": 12.301691480042894,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "threshold_attack_auc_mean": 0.5037544018163285,
+      "threshold_attack_auc_std": 0.01074859882388755,
+      "shadow_attack_auc_mean": 0.5048184829950885,
+      "shadow_attack_auc_std": 0.01114252009694372,
+      "threshold_advantage": 0.007508803632656935,
+      "shadow_advantage": 0.009636965990176938,
+      "passes": true
+    },
+    {
+      "mechanism": "local-dp",
+      "noise_multiplier": null,
+      "local_dp_epsilon_per_round": 50.0,
+      "epsilon_composed": 1283.3800929907968,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "threshold_attack_auc_mean": 0.5006324715040311,
+      "threshold_attack_auc_std": 0.005777198582639225,
+      "shadow_attack_auc_mean": 0.5049088360670929,
+      "shadow_attack_auc_std": 0.011825424180171526,
+      "threshold_advantage": 0.001264943008062236,
+      "shadow_advantage": 0.009817672134185829,
+      "passes": true
+    },
+    {
+      "mechanism": "local-dp",
+      "noise_multiplier": null,
+      "local_dp_epsilon_per_round": 20.0,
+      "epsilon_composed": 257.57478975016966,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "threshold_attack_auc_mean": 0.5030766379390232,
+      "threshold_attack_auc_std": 0.008943802398247032,
+      "shadow_attack_auc_mean": 0.5064710175145954,
+      "shadow_attack_auc_std": 0.009423655363219334,
+      "threshold_advantage": 0.0061532758780464825,
+      "shadow_advantage": 0.01294203502919089,
+      "passes": true
+    },
+    {
+      "mechanism": "local-dp",
+      "noise_multiplier": null,
+      "local_dp_epsilon_per_round": 10.0,
+      "epsilon_composed": 85.0218630838889,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "threshold_attack_auc_mean": 0.500733134093226,
+      "threshold_attack_auc_std": 0.008896115774468005,
+      "shadow_attack_auc_mean": 0.50164500509684,
+      "shadow_attack_auc_std": 0.01115177972352202,
+      "threshold_advantage": 0.0014662681864519023,
+      "shadow_advantage": 0.0032900101936799153,
+      "passes": true
+    },
+    {
+      "mechanism": "local-dp",
+      "noise_multiplier": null,
+      "local_dp_epsilon_per_round": 5.0,
+      "epsilon_composed": 31.428482656794632,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "threshold_attack_auc_mean": 0.4930092206468353,
+      "threshold_attack_auc_std": 0.010361633955485354,
+      "shadow_attack_auc_mean": 0.49367447409878606,
+      "shadow_attack_auc_std": 0.00773600936433185,
+      "threshold_advantage": -0.013981558706329444,
+      "shadow_advantage": -0.01265105180242787,
+      "passes": true
+    },
+    {
+      "mechanism": "local-dp",
+      "noise_multiplier": null,
+      "local_dp_epsilon_per_round": 1.0,
+      "epsilon_composed": 4.314078519548396,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "threshold_attack_auc_mean": 0.491883108609026,
+      "threshold_attack_auc_std": 0.016565011548727644,
+      "shadow_attack_auc_mean": 0.4966283245297006,
+      "shadow_attack_auc_std": 0.022372687744614858,
+      "threshold_advantage": -0.01623378278194798,
+      "shadow_advantage": -0.006743350940598747,
+      "passes": true
+    }
+  ]
+}

@@ -22,6 +22,9 @@ data/clinics_ladder/
 data/**/*.csv
 !data/synthetic_ckd_data.csv
 
+# Helios FHIR server runtime: downloaded HFS binary, SQLite store, generated seed, view outputs.
+data/helios/
+
 # OS
 .DS_Store
 
@@ -42,3 +45,6 @@ paper/*.toc
 paper/*.run.xml
 paper/*.fls
 paper/*.fdb_latexmk
+
+# AI layer audit log
+logs/

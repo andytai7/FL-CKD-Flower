@@ -90,7 +90,7 @@ def add(nid: str, x: int, y: int, w: int, title: str, bullets: list[str],
 # Row 1 — onboarding
 L0 = add("L0", COL_L_X, 150, COL_W, "ONBOARDING — one time, with practice IT", [
     "Practice generates a P-384 key pair — the private key never leaves the machine",
-    "Practice IT installs one Flower SuperNode and points it at the practice's own FHIR server",
+    "Practice IT installs one Flower SuperNode and points it at the practice's own Helios FHIR server",
     "Cohort validated locally: ckd-fhir-extract prints exclusion accounting; no rows leave",
 ], GREEN)
 R0 = add("R0", COL_R_X, 150, COL_W, "CONSORTIUM ADMIN", [

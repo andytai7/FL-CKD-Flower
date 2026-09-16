@@ -15,7 +15,7 @@ ever transmitted including the feature scaler, which is fitted locally and stays
 A practice's SuperNode holds its own extract and never sends it anywhere. Per round, in order:
 
 \begin{enumerate}
-  \item \textbf{Load} the practice's rows. In the pilot this is the practice's own FHIR server or
+  \item \textbf{Load} the practice's rows. In the pilot this is the practice's own Helios FHIR server or
         its Tomedo export; in the test bed it is a generated CSV. The loader is the only component
         that differs, deliberately, so that everything downstream is identical either way.
   \item \textbf{Split} 80/20 into train and held-out, by a permutation seeded from the global seed

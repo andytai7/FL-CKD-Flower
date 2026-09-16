@@ -20,6 +20,7 @@ explain afterwards.
 | 2 | Can this model federate with a real `flwr` strategy? | No — see §2. |
 | 3 | Does this change move patient rows across a boundary? | Yes, unless it is the explicitly-labelled `centralized.py` ceiling. |
 | 4 | Does it change seeds, splits, or features inside a live comparison? | Yes. Vary only the thing under test. |
+| 5 | Does it read or build patient-derived features through a **Helios** FHIR server (`data-source=fhir`, `ckd-helios`, `fhir_loader`)? | No — non-Helios FHIR stacks and new direct-to-file data paths are out of scope (CLAUDE.md §0.9 "SQL on FHIR"). |
 
 Never hand-roll a Flower primitive. Need custom federation? Subclass
 `flwr.serverapp.strategy.Strategy` (or `FedAvg`) — that is Flower's own extension point. Reimplementing
@@ -49,6 +50,7 @@ PyTorch project.
 |---|---|
 | Build/repair env | `uv sync --extra dev --extra notebook` |
 | Regenerate clinics | `uv run ckd-clinics --clinics 10` |
+| Host Helios FHIR (seeded) | `uv run ckd-helios` / `uv run ckd-helios extract` / `uv run ckd-helios sql` |
 | Federated run | `uv run ckd-simulate --clinics` |
 | Protocol run | `uv run ckd-simulate --protocol fedmosaic --clinics` |
 | Pooled ceiling | `uv run ckd-baseline --clinics` |
@@ -67,6 +69,9 @@ Wrong → right:
 ## 4. Where things live
 
 - `to_xy()` in `data/loader.py` — the **only** preprocessing entry point. Applies the §3 missingness rules. Don't write another.
+- `data/helios.py` — the **Helios FHIR server host** (`ckd-helios`): binary + seed + SQL-on-FHIR views. Only Helios servers are built on (CLAUDE.md §0.9).
+- `extract_features.sql` — the **canonical landmark contract** ("CKD LANDMARK DATAFRAME"); the FHIR paths reproduce it, never diverge from it.
+- `data/fhir_loader.py` — the canonical-contract FHIR query (REST) against the practice's Helios server.
 - `build_client_from_frame()` in `client_app.py` — the **only** client constructor. Handles local split + local scaler + model build.
 - `messages.py` — the only definition of the Flower `Message` shapes. Don't rebuild them inline.
 - `weighted_and_worst` in `server_app.py` — the dual-level aggregator. Every strategy takes it.

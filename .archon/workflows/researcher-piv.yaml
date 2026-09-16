@@ -1,0 +1,209 @@
+# researcher-piv - the rule-based PIV loop for a solo researcher.
+# Model lanes (2026-09-15): plan/review -> large (claude opus-5, effort high); implement loop -> medium (ume/kimi-k3).
+#
+# Deterministic Plan-Implement-Validate for ONE change, hard-gated on a signed
+# Decision Record produced by the `design-interview` skill
+# (docs/decisions/<date>-<slug>.md). Structure is owned by this file; AI only
+# fills in plan/implement/review. Human gates are `approval:` nodes.
+#
+# Inputs: pass the decision record as --input decision_doc=<repo-relative path>.
+#   - prompts  read it as $INPUTS.decision_doc
+#   - bash     reads the env var $INPUTS_DECISION_DOC
+#
+# NOTE: approval.on_reject is currently flagged deprecated by Archon v0.10.1 in
+# favour of an undocumented `approval.decisions` form; on_reject keeps working
+# via the legacy mechanism. Migrate once the new schema is public.
+#
+# Companion skills (this pack): design-interview (must run first),
+# plan-feature, archon. Bundled alternatives: archon-piv-loop (no record gate),
+# archon-plan-to-pr (execute an existing plan).
+#
+# Flow maps (shipped to the repo root by install.sh): diagrams/*.png - the
+# two-lane SDLC and the detailed end-to-end maps locate THIS workflow in the
+# broader flow. This node graph is the "execute / PIV" step of those maps,
+# hard-gated on the chat-side interview they predate.
+
+name: researcher-piv
+description: |
+  Deterministic Plan->Implement->Validate->Review for one change, on an isolated
+  branch, hard-gated on a signed Decision Record from the design-interview skill.
+
+  Use when: a docs/decisions/<date>-<slug>.md record exists and you want
+  rule-based, repeatable execution. This is the engine half of the hybrid; the
+  design interview happens in the OMP harness first.
+  NOT for: exploring ideas, drafting plans, Q&A, or changes with no decision
+  record yet.
+
+  Produces: a plan.md artifact, one atomic commit per task, validation results,
+  a decision-compliance review, and a human approval gate before finishing.
+
+provider: claude
+interactive: true   # approval gates must run in foreground
+inputs:
+  decision_doc:
+    required: true
+    description: Repo-relative path to the signed Decision Record, e.g. docs/decisions/2026-09-11-csv-export.md
+nodes:
+  # Gate 1 (deterministic, no AI): the interview must have happened. A missing
+  # or malformed record fails the run before any AI node or file is touched.
+  - id: check-decision
+    bash: |
+      f="$INPUTS_DECISION_DOC"
+      if [ -z "$f" ]; then
+        echo "FAIL: no decision_doc input (pass --input decision_doc=<path>)" >&2
+        exit 1
+      fi
+      if [ ! -f "$f" ]; then
+        echo "FAIL: decision record not found at '$f' - run the design-interview skill first" >&2
+        exit 1
+      fi
+      if ! grep -q '^## Decisions' "$f"; then
+        echo "FAIL: '$f' has no '## Decisions' section - incomplete decision record" >&2
+        exit 1
+      fi
+      echo "PASS: decision record '$f' present and well-formed"
+
+  # AI node: turn the record into a one-pass plan artifact.
+  - id: plan
+    model: large
+    depends_on: [check-decision]
+    context: fresh
+    prompt: |
+      You are planning ONE implementation from a signed Decision Record.
+
+      Decision record: $INPUTS.decision_doc
+      Read it in full. Read the repo's CLAUDE.md. Read the key files the change
+      touches (skim; implement later).
+
+      If any recorded decision contradicts codebase reality, do NOT silently
+      deviate - end your reply with "CONFLICT: <item>" and stop, so the run can
+      halt.
+
+      Otherwise write a one-pass plan to $ARTIFACTS_DIR/plan.md following this
+      structure: Feature Description, User Story, Decision Record (BINDING,
+      verbatim from the record), CONTEXT REFERENCES (files+line ranges the
+      implementer MUST read), STEP-BY-STEP TASKS (CREATE/UPDATE/ADD/REMOVE with
+      IMPLEMENT/PATTERN/IMPORTS/GOTCHA/VALIDATE per task), TESTING STRATEGY,
+      VALIDATION COMMANDS. Keep every recorded decision verbatim.
+
+      Reply with: the plan path, a 5-line summary, and the list of validation
+      commands you put in the plan.
+
+  # Human gate 1: the researcher approves or rejects the plan before any code.
+  - id: approve-plan
+    depends_on: [plan]
+    approval:
+      message: |
+        Review the implementation plan produced from the Decision Record:
+        - Decision record: $INPUTS.decision_doc
+        - Plan artifact: $ARTIFACTS_DIR/plan.md
+        Approve to start implementation, or reject with feedback (that feedback
+        is fed back into a plan revision).
+      capture_response: true
+      on_reject:
+        prompt: |
+          The plan was rejected. Feedback: $REJECTION_REASON
+          Re-read the decision record, revise $ARTIFACTS_DIR/plan.md to address
+          every point, and re-present the revised plan. Feedback wins over a
+          plan detail, but never silently overrides an explicit user decision -
+          surface any such conflict instead of bending it.
+        max_attempts: 5
+
+  # AI loop with a deterministic completion signal (until_field on the node's
+  # validated JSON output), fresh session each iteration.
+  - id: implement
+    model: medium
+    depends_on: [approve-plan]
+    loop:
+      prompt: |
+        You are implementing $ARTIFACTS_DIR/plan.md on this branch, ONE task at
+        a time, in dependency order. The Decision Record
+        ($INPUTS.decision_doc) is BINDING: follow its Decisions and its
+        Validation plan exactly.
+
+        Per task: read the task, implement it, run that task's validation
+        command (from the plan), fix until it passes, then commit that single
+        task as one atomic conventional commit. Never commit a failing task.
+        Never run linters/formatters/test-suites you were not told to.
+
+        When every task is complete and every validation command passes, emit
+        exactly this JSON (nothing else):
+        { "complete": true, "summary": "<short summary>", "validation": "<what passed>" }
+        Otherwise emit:
+        { "complete": false, "summary": "<current state>", "validation": "<last failure>" }
+      until_field: complete
+      max_iterations: 40
+      fresh_context: true
+    output_format:
+      type: object
+      properties:
+        complete:
+          type: boolean
+        summary:
+          type: string
+        validation:
+          type: string
+      required: [complete, summary, validation]
+
+  # Deterministic contract check: the record still exists and is unmodified by
+  # the implementer, plus a clean branch-state snapshot.
+  - id: validate-contract
+    depends_on: [implement]
+    bash: |
+      f="$INPUTS_DECISION_DOC"
+      [ -f "$f" ] || { echo "FAIL: decision record vanished during implementation"; exit 1; }
+      if git diff --name-only "$f" | grep -q .; then
+        echo "WARN: decision record was modified during implementation"
+      else
+        echo "CONTRACT OK: decision record unchanged"
+      fi
+      echo "Branch state (untracked/modified):"
+      git status --porcelain
+
+  # AI review node: audit the diff against the record.
+  - id: review
+    model: large
+    depends_on: [validate-contract]
+    context: fresh
+    prompt: |
+      You are the design-compliance reviewer. Read the Decision Record
+      ($INPUTS.decision_doc), then review `git diff` on this branch against it.
+
+      Output a numbered report under three headings:
+      - DEVIATIONS: every place the implementation violates a recorded decision
+        (cite the decision # and the diff hunk).
+      - DELEGATED-GUESSES: choices the implementer made on items marked
+        Delegated in the record; flag any you judge wrong so the human can veto.
+      - VERIFICATION: which tests/evals from the record's Validation plan
+        actually ran (from the implement loop's report).
+
+      Do NOT edit code. End your reply with either "Verdict: PASS" or
+      "Verdict: DEVIATIONS FOUND".
+
+  # Human gate 2: ship decision.
+  - id: approve-ship
+    depends_on: [review]
+    approval:
+      message: |
+        Implementation complete. The compliance review report was streamed
+        above. Inspect the branch diff if you have not.
+        Approve to finish (merge / PR / whatever the task implies), or reject
+        with feedback for rework.
+      capture_response: true
+      on_reject:
+        prompt: |
+          Rework requested. Feedback: $REJECTION_REASON
+          Fix the implementation to address every point, re-run the relevant
+          validation commands, and re-present the changes. Never override a
+          recorded user decision without surfacing the conflict first.
+        max_attempts: 5
+
+  # Terminal report artifact.
+  - id: report
+    depends_on: [approve-ship]
+    bash: |
+      echo "researcher-piv complete."
+      echo "Decision record: $INPUTS_DECISION_DOC"
+      echo "Plan artifact:   $ARTIFACTS_DIR/plan.md"
+      echo "Branch:"
+      git branch --show-current

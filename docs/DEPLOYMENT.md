@@ -145,7 +145,7 @@ flower-supernode \
   --auth-supernode-private-key praxis_01.key \
   --auth-supernode-public-key  praxis_01.pub \
   --clientappio-api-address 127.0.0.1:9094 \
-  --node-config "partition-id=0 num-partitions=25 fhir-base-url='http://localhost:8080/fhir'"
+  --node-config "partition-id=0 num-partitions=25 fhir-base-url='http://127.0.0.1:8080'"
 ```
 
 `--node-config` is how this app learns which practice it is and where its data lives:
@@ -154,7 +154,7 @@ flower-supernode \
 |---|---|
 | `partition-id` | 0-based practice index; unique per SuperNode |
 | `num-partitions` | total practices in the federation (25 for the pilot) |
-| `fhir-base-url` | this practice's own FHIR server, read by `data/fhir_loader.py` |
+| `fhir-base-url` | this practice's own **Helios FHIR server** (sandbox host: `uv run ckd-helios`), read by `data/fhir_loader.py` / the SQL-on-FHIR views in `data/helios.py` |
 | `pseudonym-salt` | optional (default off): enables the per-practice salted-HMAC join key on the extraction — the T4.2 mechanism named in [PRIVACY.md](PRIVACY.md) §2, not a raw identifier |
 
 To read FHIR rather than CSV, run with `data-source=fhir` (step 7). `--clientappio-api-address`
@@ -167,9 +167,12 @@ carry no identifier, and row order is a deterministic per-extraction hash order.
 query against the real server before the run, on the practice machine:
 
 ```bash
-uv run ckd-fhir-extract http://localhost:8080/fhir            # prints exclusion accounting + cohort summary
-uv run ckd-fhir-extract http://localhost:8080/fhir --t0 2025-08-26   # fixed landmark for reproducibility
+uv run ckd-fhir-extract http://127.0.0.1:8080           # prints exclusion accounting + cohort summary
+uv run ckd-fhir-extract http://127.0.0.1:8080 --t0 2025-08-26   # fixed landmark for reproducibility
 ```
+In the sandbox, the server is the seeded local **Helios** instance: `uv run ckd-helios`
+(serve + seed), `uv run ckd-helios extract` (round-trip proof), `uv run ckd-helios sql`
+(SQL-on-FHIR views). The repo builds only from Helios (CLAUDE.md §0.9).
 
 ---
 
@@ -247,6 +250,73 @@ flwr ls flipit-prod                # list runs
 flwr log <run-id> flipit-prod      # fetch logs
 flwr stop <run-id> flipit-prod     # stop a run
 ```
+
+---
+
+## Console runbook — plain-weights FHIR demo (what notebook 04 does, over the wire)
+
+[`notebooks/04_helios_sql_federated_fedprox.ipynb`](../notebooks/04_helios_sql_federated_fedprox.ipynb)
+proves this exact run in one process: Helios **SQL-on-FHIR** queries → the canonical
+`extract_features.sql` frame → federated logreg via **Flower's real strategies**, with a plain
+weights-only wire and no privacy layer. This is the same thing from the terminal. Every ε key is
+left default (0) and `secure-aggregation` is not set, so the wire carries **only model
+coefficients** — no DP, no SecAgg, exactly the demo scope.
+
+1) **Practice Helios servers up + verified** (each practice, against its own Helios):
+   ```bash
+   uv run ckd-helios             # host + seed the practice Helios server on :8080
+   curl -fsS http://127.0.0.1:8080/metadata > /dev/null && echo "helios ok"
+   uv run ckd-helios extract     # round-trip proof: canonical extraction reproduces the seed
+   uv run ckd-helios sql         # optional: the SQL-on-FHIR views -> data/helios/out/
+   ```
+
+2) **SuperLink up** (central host). Development rehearsal is `--insecure`; the pilot uses
+   TLS + node auth (Steps 1–4):
+   ```bash
+   flower-superlink \
+     --ssl-ca-certfile ca.crt --ssl-certfile server.crt --ssl-keyfile server.key \
+     --enable-supernode-auth \
+     --fleet-api-address 0.0.0.0:9092 --control-api-address 0.0.0.0:9093 \
+     --database /var/lib/flower/flipit.db
+   ```
+   then admit each practice: `flwr supernode register praxis_NN.pub flipit-prod`.
+
+3) **SuperNode per practice** (with its own Helios endpoint — Step 5):
+   ```bash
+   flower-supernode \
+     --superlink superlink.flipit.local:9092 --root-certificates ca.crt \
+     --auth-supernode-private-key praxis_01.key --auth-supernode-public-key praxis_01.pub \
+     --clientappio-api-address 127.0.0.1:9094 \
+     --node-config "partition-id=0 num-partitions=25 fhir-base-url='http://127.0.0.1:8080'"
+   ```
+
+4) **Push the plain-weights run**:
+   ```bash
+   flwr run . flipit-prod --stream --run-config \
+     "fraction-fit=1.0 num-server-rounds=20 num-practices=25 \
+      class-weight-balanced=true seed=42 local-epochs=2 data-source='fhir'"
+   ```
+   `server_app.main()` reads all of `fraction-fit`, `num-server-rounds`, `num-practices`,
+   `class-weight-balanced`, `seed` and `local-epochs` with **no defaults** — leave none out.
+   Optional here: `min-cohort-size`, `min-train-examples`, `metric-privacy`. With no ε key and
+   no `secure-aggregation`, the ServerApp is plain `CohortFloorFedAvg` — plain weights only.
+
+5) **Monitor / teardown**:
+   ```bash
+   flwr ls flipit-prod        # runs; `--stream` already followed logs
+   flwr log <run-id> flipit-prod
+   flwr stop <run-id> flipit-prod
+   ```
+   Teardown order: stop the run → Ctrl-C each SuperNode → stop the SuperLink. **Helios stays
+   up** — it is the practice's own server, not part of the Flower stack.
+
+> **FedAvg on the wire, FedProx on the research bench.** The live `ServerApp` ships
+> `CohortFloorFedAvg`, a Flower `FedAvg` subclass. FedProx — Flower's built-in strategy, μ = 0.1 in
+> `models/protocols` — is exercised **in-process** in `simulate.py` / `models/protocols.run_protocol`
+> and in notebook 04 through the *same real `flwr.serverapp.strategy.FedProx` object* the
+> SuperLink would run, on identical frames, comparably with `local` and `fedavg`. If the pilot picks
+> FedProx, it is a run-config change on the live `server_app` (the strategy already ships in flwr
+> 1.33) — it is just not currently the deployed default.
 
 ---
 
@@ -342,7 +412,7 @@ the standard exists; the standard is what ships.
 | SuperNode connects, run never starts | `num-practices` > nodes actually connected | `min_available_nodes` blocks; match the counts |
 | `flwr run` cannot reach the SuperLink | Pointed at the Fleet port | Use the **Control API** port (9093) in `config.toml` |
 | Node rejected | Public key not registered | `flwr supernode register <key> flipit-prod` |
-| `ConnectionError` from the FHIR loader | Practice FHIR server down or wrong URL | Check `fhir-base-url` in `--node-config` |
+| `ConnectionError` from the FHIR loader | Practice **Helios** server down or wrong URL | Check `fhir-base-url` in `--node-config` (`uv run ckd-helios` in the sandbox) |
 | `ValueError: ... below the smallest candidate batch 8` | A practice's census is under the DP-SGD floor (typical: low-`alpha` Dirichlet sims leave tiny partitions) | The rule-based agent refuses unsafe plans — federate only practices above the floor; in simulation, raise `alpha` (0.5 → 5.0) |
 
 ---

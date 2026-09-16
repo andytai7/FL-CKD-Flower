@@ -32,10 +32,11 @@ def dirichlet_partition(
     num_partitions: int,
     alpha: float,
     seed: int,
+    label_col: str = LABEL_COL,
 ) -> list[np.ndarray]:
     """Return a list of row-index arrays, one per partition, via Dirichlet label partitioning."""
     rng = np.random.default_rng(seed)
-    labels = df[LABEL_COL].to_numpy()
+    labels = df[label_col].to_numpy()
     part_indices: list[list[int]] = [[] for _ in range(num_partitions)]
 
     for cls in np.unique(labels):
