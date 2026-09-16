@@ -32,6 +32,7 @@ def dirichlet_partition(
     num_partitions: int,
     alpha: float,
     seed: int,
+    *,
     label_col: str = LABEL_COL,
 ) -> list[np.ndarray]:
     """Return a list of row-index arrays, one per partition, via Dirichlet label partitioning."""
