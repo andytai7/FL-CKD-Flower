@@ -1,0 +1,93 @@
+{
+  "source": "Synthea 10k COVID-era CSV (MITRE, Apache-2.0)",
+  "label": "chronic stage>=3: two eGFR<60 >= 90d apart before index (KDIGO; matches extract_features.sql)",
+  "n_participants": 9844,
+  "egfr_measured_share": 0.3786,
+  "prevalence": 0.0452,
+  "clinics": [
+    {
+      "clinic_id": 0,
+      "name": "barnstable county",
+      "n": 379,
+      "ckd_rate": 0.0792
+    },
+    {
+      "clinic_id": 1,
+      "name": "berkshire county",
+      "n": 223,
+      "ckd_rate": 0.0493
+    },
+    {
+      "clinic_id": 2,
+      "name": "bristol county",
+      "n": 815,
+      "ckd_rate": 0.0417
+    },
+    {
+      "clinic_id": 3,
+      "name": "dukes county",
+      "n": 46,
+      "ckd_rate": 0.0652
+    },
+    {
+      "clinic_id": 4,
+      "name": "essex county",
+      "n": 1058,
+      "ckd_rate": 0.052
+    },
+    {
+      "clinic_id": 5,
+      "name": "franklin county",
+      "n": 102,
+      "ckd_rate": 0.0098
+    },
+    {
+      "clinic_id": 6,
+      "name": "hampden county",
+      "n": 663,
+      "ckd_rate": 0.0377
+    },
+    {
+      "clinic_id": 7,
+      "name": "hampshire county",
+      "n": 223,
+      "ckd_rate": 0.0269
+    },
+    {
+      "clinic_id": 8,
+      "name": "middlesex county",
+      "n": 2233,
+      "ckd_rate": 0.0434
+    },
+    {
+      "clinic_id": 9,
+      "name": "misc",
+      "n": 27,
+      "ckd_rate": 0.037
+    },
+    {
+      "clinic_id": 10,
+      "name": "norfolk county",
+      "n": 1052,
+      "ckd_rate": 0.0475
+    },
+    {
+      "clinic_id": 11,
+      "name": "plymouth county",
+      "n": 667,
+      "ckd_rate": 0.0375
+    },
+    {
+      "clinic_id": 12,
+      "name": "suffolk county",
+      "n": 1086,
+      "ckd_rate": 0.0396
+    },
+    {
+      "clinic_id": 13,
+      "name": "worcester county",
+      "n": 1270,
+      "ckd_rate": 0.0504
+    }
+  ]
+}

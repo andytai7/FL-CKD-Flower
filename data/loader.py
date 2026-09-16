@@ -65,6 +65,12 @@ CANONICAL_FEATURE_COLS = [
 CANONICAL_LABEL_COL = "ckd_incident"
 CANONICAL_NUM_FEATURES = len(CANONICAL_FEATURE_COLS) + 2 * len(CANONICAL_LAB_COLS)  # 16
 
+# ── Non-CKD track schemas (experiment/image, experiment/timeseries clinics) ──
+# A mapper-emitted frame for these tracks carries exactly <feature columns> + one of these
+# labels; `to_xy` treats every other column as a feature. Mappers emit complete numeric frames,
+# so no missingness rules apply — image pixels and waveform features are all observed.
+GENERIC_LABEL_COLS = ("melanoma", "afib")
+
 _HERE = Path(__file__).resolve().parent
 DEFAULT_CSV = _HERE / "synthetic_ckd_data.csv"
 
@@ -77,6 +83,11 @@ def load_dataframe(csv_path: str | Path | None = None) -> pd.DataFrame:
     """Load the CKD CSV and validate the expected columns are present."""
     path = Path(csv_path) if csv_path is not None else DEFAULT_CSV
     df = pd.read_csv(path)
+    if any(label in df.columns for label in GENERIC_LABEL_COLS):
+        # Non-CKD track frame (mapper output): one label + feature columns, nothing else.
+        if len(df.columns) < 2:
+            raise ValueError(f"Generic frame {path} carries a label but no feature columns")
+        return df
     missing = [c for c in FEATURE_COLS + [LABEL_COL] if c not in df.columns]
     if missing:
         raise ValueError(f"Missing expected columns in {path}: {missing}")
@@ -105,6 +116,8 @@ def to_xy(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
 
     The single preprocessing entry point for both schemas, dispatched on the label column:
     - canonical (`ckd_incident`, extract_features.sql §9) — `_canonical_to_xy`
+    - non-CKD track (`melanoma` / `afib`, mapper-emitted) — every remaining column is a
+      feature; frames are complete numerics, so no missingness rules apply
     - synthetic (`ckd_stage3plus`) — the rules below
 
     Synthetic missingness: structural zero for flags / years_since; median + indicator for any
@@ -113,10 +126,17 @@ def to_xy(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     """
     if CANONICAL_LABEL_COL in df.columns:
         return _canonical_to_xy(df)
+    for label in GENERIC_LABEL_COLS:
+        if label in df.columns:
+            feature_cols = [c for c in df.columns if c != label]
+            X = df[feature_cols].astype("float32").to_numpy()
+            y = df[label].to_numpy(dtype="int64")
+            return X, y
     if LABEL_COL not in df.columns:
         raise ValueError(
-            f"Frame carries neither label {LABEL_COL!r} (synthetic) nor "
-            f"{CANONICAL_LABEL_COL!r} (canonical) — cannot dispatch preprocessing."
+            f"Frame carries neither label {LABEL_COL!r} (synthetic), "
+            f"{CANONICAL_LABEL_COL!r} (canonical), nor any of {GENERIC_LABEL_COLS} "
+            f"(non-CKD track) — cannot dispatch preprocessing."
         )
 
     df = df.copy()

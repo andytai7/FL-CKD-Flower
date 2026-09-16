@@ -34,7 +34,7 @@ import numpy as np
 from flwr.serverapp.strategy import FedAvg
 
 from client_app import build_client_from_frame
-from data import NUM_FEATURES, load_clinic_frames, load_partition
+from data import load_clinic_frames, load_partition, to_xy
 from messages import evaluate_reply, hushed, train_reply
 from models import LogRegModel
 from models.protocols import BASELINES, PROTOCOLS
@@ -85,7 +85,9 @@ def _run_fedavg(frames: list, num_rounds: int, quiet: bool, config: dict) -> lis
         class_weight_balanced=bool(config["class-weight-balanced"]),
         seed=int(config["seed"]),
     )
-    global_model.initialize(NUM_FEATURES)
+    # Model width comes from the loaded data, not a module constant — the CKD schemas (10/16)
+    # and the non-CKD track frames (mapper-emitted) all flow through the same FedAvg loop.
+    global_model.initialize(to_xy(frames[0])[0].shape[1])
     ndarrays = global_model.get_parameters()
 
     clients = [build_client_from_frame(df, pid, config) for pid, df in enumerate(frames)]

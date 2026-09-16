@@ -1,0 +1,97 @@
+{
+  "suite": "concept_shift",
+  "num_clinics": 10,
+  "base_seed": 1000042,
+  "hardness": {
+    "interaction_dm_age": 0.0,
+    "interaction_age_relu": 0.0,
+    "frailty_sd": 0.0,
+    "frailty_feature_load": 1.3,
+    "frailty_risk_beta": 0.55,
+    "risk_noise_sd": 0.0,
+    "label_fn": 0.0,
+    "label_fp": 0.0,
+    "beta_jitter": 0.15,
+    "undercode_lo": 1.0,
+    "intercept_jitter": 0.0,
+    "years_lognormal": false,
+    "intercept_shift": -1.5983741283416748
+  },
+  "sizes": null,
+  "diagnostics": {
+    "bayes_auroc": 0.8651,
+    "logreg_ceiling_auroc": 0.8665,
+    "prevalence_observed": 0.1319,
+    "max_abs_feature_corr": 0.8455,
+    "max_abs_flag_corr": 0.051
+  },
+  "clinics": [
+    {
+      "clinic_id": 0,
+      "archetype": "urban-young",
+      "n": 213,
+      "ckd_rate": 0.0704
+    },
+    {
+      "clinic_id": 1,
+      "archetype": "rural-elderly",
+      "n": 325,
+      "ckd_rate": 0.3754
+    },
+    {
+      "clinic_id": 2,
+      "archetype": "metabolic",
+      "n": 577,
+      "ckd_rate": 0.1854
+    },
+    {
+      "clinic_id": 3,
+      "archetype": "high-cvd",
+      "n": 265,
+      "ckd_rate": 0.3434
+    },
+    {
+      "clinic_id": 4,
+      "archetype": "mixed",
+      "n": 152,
+      "ckd_rate": 0.2434
+    },
+    {
+      "clinic_id": 5,
+      "archetype": "urban-young",
+      "n": 427,
+      "ckd_rate": 0.0211
+    },
+    {
+      "clinic_id": 6,
+      "archetype": "rural-elderly",
+      "n": 461,
+      "ckd_rate": 0.0629
+    },
+    {
+      "clinic_id": 7,
+      "archetype": "metabolic",
+      "n": 229,
+      "ckd_rate": 0.6856
+    },
+    {
+      "clinic_id": 8,
+      "archetype": "high-cvd",
+      "n": 250,
+      "ckd_rate": 0.056
+    },
+    {
+      "clinic_id": 9,
+      "archetype": "mixed",
+      "n": 480,
+      "ckd_rate": 0.1271
+    }
+  ],
+  "v1_reference": {
+    "bayes_auroc": 0.8513,
+    "logreg_ceiling_auroc": 0.8513,
+    "prevalence_pooled": 0.309,
+    "max_abs_flag_corr": 0.057,
+    "note": "200k Monte-Carlo, 2026-09-03"
+  }
+}
