@@ -58,3 +58,7 @@ paper/*.fdb_latexmk
 
 # AI layer audit log
 logs/
+
+# Jupyter checkpoints + Office owner-lock files (transient, regenerable)
+.ipynb_checkpoints/
+~$*
