@@ -29,6 +29,8 @@ dependencies = [
     # Helios SQL-on-FHIR engine (HeliosSoftware/hfs): the "our query is SQL on FHIR" mechanism
     # that runs the ViewDefinitions over Helios-hosted resources (data/helios.py `sql`).
     "pysof>=0.2.1",
+    "python-docx>=1.2.0",
+    "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]
@@ -80,6 +82,7 @@ ckd-web = "webapp:main"
 [tool.hatch.build.targets.wheel]
 include = [
     "data", "models",
+    "data/sql/*.sql",  # the CheCKD runtime SQL ships inside the FAB (practice_1 copy = source)
     "client_app.py", "server_app.py", "task.py", "centralized.py", "simulate.py",
     "messages.py", "benchmark.py", "privacy.py", "audit.py", "dp.py", "equity.py", "phasemap.py",
     "model_artifact.py", "webapp.py",
@@ -114,10 +117,19 @@ seed = 42
 # pre-migration evaluation baseline only), "fhir" queries that practice's Helios FHIR server
 # (fhir-base-url comes from --node-config; sandbox host: uv run ckd-helios).
 data-source = "csv"
-# Note the two sources are different tasks (CLAUDE.md §3b): "csv" = synthetic 10-feature
+# Note the sources are different tasks (CLAUDE.md §3b): "csv" = synthetic 10-feature
 # prevalence schema; "fhir" = canonical extract_features.sql contract, de-identified in
 # data/fhir_loader.py (no identifier read or emitted; optional `pseudonym-salt` in --node-config
-# adds the salted-HMAC join key named in docs/PRIVACY.md §2).
+# adds the salted-HMAC join key named in docs/PRIVACY.md §2); "sql" = the REAL-PRACTICE
+# deployment task (CheCKD CKD-progression, notebooks/06): the client's SuperNode runs the bundled
+# Stage-1/Stage-2 SQL (data/sql/) against its own PostgreSQL export, drops the temp tables right
+# after materialisation, and returns only model weights. "sql" needs these run keys (identical
+# for every practice in the run — they define the shared task) plus node-local sql-dsn /
+# sql-praxis / model-artifact-path (see docs/DEPLOYMENT.md):
+# sql-stichtag = "2026-10-01"   # outcome window end (landmark + horizon), no default: set per run
+sql-horizon-years = 2           # outcome horizon 1 / 2 / 5
+sql-feature-years = 5           # retrospective lab-feature window
+sql-label = "g3a"               # trained threshold: g3a (primary endpoint) / g3b / g4
 
 # Privacy layer L5 (docs/PRIVACY.md §1): anonymise per-practice metric lines / suppress small cohorts.
 # ON by default. Naming a practice alongside its cohort size and AUROC every round is itself a
@@ -207,3 +219,8 @@ target-version = "py311"
 # Notebooks: sys.path bootstrap before imports (E402); compact one-line statements and grouped
 # imports are idiomatic in a notebook setup cell (E702, E401).
 "notebooks/*.ipynb" = ["E402", "E702", "E401"]
+
+[dependency-groups]
+dev = [
+    "dvc>=3.67.1",
+]
