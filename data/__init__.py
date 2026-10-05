@@ -25,12 +25,15 @@ from .loader import (
     FEATURE_COLS,
     LABEL_COL,
     NUM_FEATURES,
+    PRAXIS_LABELS,
     list_clinic_files,
     load_clinic_frames,
     load_dataframe,
+    praxis_feature_columns,
     to_xy,
 )
 from .partition import load_partition
+from .sql_loader import load_practice_frame_sql
 
 __all__ = [
     "FEATURE_COLS",
@@ -50,4 +53,7 @@ __all__ = [
     "list_clinic_files",
     "load_clinic_frames",
     "load_practice_frame",
+    "load_practice_frame_sql",
+    "praxis_feature_columns",
+    "PRAXIS_LABELS",
 ]

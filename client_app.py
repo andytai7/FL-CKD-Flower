@@ -36,7 +36,7 @@ from flwr.app.message_type import MessageType
 from flwr.app import ArrayRecord, Context, Message, MetricRecord, RecordDict
 from flwr.clientapp import ClientApp
 
-from data import load_partition, load_practice_frame, to_xy
+from data import load_partition, load_practice_frame, load_practice_frame_sql, praxis_feature_columns, to_xy
 from models import LogRegModel
 from task import compute_metrics, fit_scaler
 
@@ -48,12 +48,18 @@ LOCAL_DP_CLIPPING_NORM = 1.0
 class CKDPractice:
     """One practice's local state: its data, its scaler, and its model."""
 
-    def __init__(self, model, X_train, y_train, X_test, y_test, local_epochs, partition_id):
+    def __init__(self, model, X_train, y_train, X_test, y_test, local_epochs, partition_id,
+                 scaler=None, feature_names=None):
         self.model = model
         self.X_train, self.y_train = X_train, y_train
         self.X_test, self.y_test = X_test, y_test
         self.local_epochs = local_epochs
         self.partition_id = partition_id
+        # Fitted on this practice's train split only. Kept (not discarded) so the local model
+        # artifact can later reproduce the exact scaling for patient-level risk scores.
+        self.scaler = scaler
+        # Feature column order of X (deployment data sources only), needed to score patients.
+        self.feature_names = feature_names
 
     def fit(self, ndarrays: list[np.ndarray]) -> tuple[list[np.ndarray], int]:
         self.model.set_parameters(ndarrays)
@@ -78,15 +84,19 @@ def _local_split(X, y, seed, partition_id):
     return X[:split], y[:split], X[split:], y[split:]
 
 
-def build_client_from_frame(df, partition_id: int, run_config) -> CKDPractice:
+def build_client_from_frame(df, partition_id: int, run_config, label: str | None = None,
+                            feature_names=None) -> CKDPractice:
     """Preprocess one practice's DataFrame locally and build its client (data never shared).
 
     The data-source-agnostic core: callers supply the rows (a Dirichlet partition of the flat CSV,
     one on-disk clinic file, or a FHIR query result) and this does the local split + scaling +
     LogRegModel build identically. This is the ONLY client constructor — see SKILL.md.
+
+    `label` selects the outcome threshold for the real-practice (CheCKD SQL) schema; ignored by
+    the single-label schemas. `feature_names` records the X column order for the local artifact.
     """
     seed = int(run_config["seed"])
-    X, y = to_xy(df)
+    X, y = to_xy(df, label=label)
     X_train, y_train, X_test, y_test = _local_split(X, y, seed, partition_id)
 
     scaler = fit_scaler(X_train)
@@ -99,27 +109,104 @@ def build_client_from_frame(df, partition_id: int, run_config) -> CKDPractice:
     model.initialize(X_train.shape[1])
 
     return CKDPractice(
-        model, X_train, y_train, X_test, y_test, int(run_config["local-epochs"]), partition_id
+        model, X_train, y_train, X_test, y_test, int(run_config["local-epochs"]), partition_id,
+        scaler=scaler, feature_names=feature_names,
     )
+
+
+# In-process cache: the real-practice SQL path materialises the landmark dataframe ONCE per run
+# (Stage-1 temp tables dropped right after the query — see data/sql_loader.py); the frame is then
+# held in SuperNode RAM and reused for every round, since the practice's data cannot change
+# mid-run. Keyed by everything that could make the client differ; the simulation engine's
+# per-round worker processes simply re-build (cache miss), which stays correct.
+_CLIENT_CACHE: dict[tuple, CKDPractice] = {}
+
+
+def _sql_settings(context: Context) -> dict:
+    """Config for the real-practice PostgreSQL path (`data-source = "sql"`).
+
+    Node-local keys (this practice's SuperNode config only — never broadcast, never shipped in
+    the FAB): `sql-dsn` (libpq connection string for the practice's own export database) and
+    `sql-praxis` (the practice identifier the SQL stamps). Run keys (identical across ALL
+    practices — the landmark, horizon and feature window are what make practices comparable,
+    CLAUDE.md rule 6): `sql-stichtag`, `sql-horizon-years` (1/2/5), `sql-feature-years`,
+    `sql-label` (the trained threshold: g3a primary, g3b, g4).
+    """
+    run_config, node_config = context.run_config, context.node_config
+    missing = [
+        k for k, src, req in (
+            ("sql-dsn", node_config, True),
+            ("sql-praxis", node_config, True),
+            ("sql-stichtag", run_config, True),
+        )
+        if req and not src.get(k)
+    ]
+    if missing:
+        raise ValueError(
+            f"data-source 'sql' requires {missing}: sql-dsn / sql-praxis belong in the SuperNode's "
+            "node config, sql-stichtag in the run config (see docs/DEPLOYMENT.md)."
+        )
+    return {
+        "dsn": str(node_config["sql-dsn"]),
+        "praxis": str(node_config["sql-praxis"]),
+        "stichtag": str(run_config["sql-stichtag"]),
+        "horizont_jahre": int(run_config.get("sql-horizon-years", 2)),
+        "feature_jahre": int(run_config.get("sql-feature-years", 5)),
+        "label": str(run_config.get("sql-label", "g3a")),
+    }
 
 
 def build_client(context: Context) -> CKDPractice:
     """Build this node's client from whichever data source the run is configured with.
 
     `data-source = "csv"` (default) partitions the flat synthetic CSV; `"fhir"` queries this
-    practice's own Helios FHIR server. Either way the rows are loaded locally and never transmitted.
+    practice's own Helios FHIR server (the sandbox path, CLAUDE.md §0.9); `"sql"` materialises
+    the landmark training dataframe from this practice's own PostgreSQL export via the CheCKD
+    two-stage SQL (data/sql_loader.py) — temp tables live only for the query session. Either way
+    the rows are loaded locally and never transmitted.
 
-    The two sources are different prediction tasks: `"csv"` is the synthetic 10-feature
+    The sql path is cached per run: the temp tables are rebuilt and dropped on the first round,
+    the dataframe then trains all rounds from RAM (the practice's export cannot change mid-run).
+    If the engine re-spawns the client process per message, the cache simply misses and the
+    loader re-runs — correct either way.
+
+    The three sources are different prediction tasks: `"csv"` is the synthetic 10-feature
     prevalence schema; `"fhir"` builds the canonical extract_features.sql contract — 16 model
-    columns (8 features + lab missing-indicators), `geschlecht`, and a CKD incidence label
-    (CLAUDE.md §3b). `to_xy` dispatches on the frame's label column, so `build_client_from_frame`
+    columns (8 features + lab missing-indicators), `geschlecht`, and a CKD incidence label;
+    `"sql"` builds the CheCKD CKD-progression task (label_g3a/g3b/g4, CLAUDE.md §3b note and
+    notebooks/06). `to_xy` dispatches on the frame's label column, so `build_client_from_frame`
     and every model consume either unchanged.
     """
     run_config = context.run_config
     partition_id = int(context.node_config["partition-id"])
     num_partitions = int(context.node_config["num-partitions"])
 
-    if str(run_config.get("data-source", "csv")) == "fhir":
+    source = str(run_config.get("data-source", "csv"))
+    if source == "sql":
+        settings = _sql_settings(context)
+        # Include the run-config seed so two runs never silently share a split/scaler.
+        cache_key = (
+            partition_id, settings["praxis"], settings["dsn"], settings["stichtag"],
+            settings["horizont_jahre"], settings["feature_jahre"], settings["label"],
+            int(run_config["seed"]),
+        )
+        if cache_key in _CLIENT_CACHE:
+            return _CLIENT_CACHE[cache_key]
+        df = load_practice_frame_sql(
+            settings["dsn"],
+            praxis=settings["praxis"],
+            stichtag=settings["stichtag"],
+            horizont_jahre=settings["horizont_jahre"],
+            feature_jahre=settings["feature_jahre"],
+        )
+        client = build_client_from_frame(
+            df, partition_id, run_config,
+            label=settings["label"], feature_names=praxis_feature_columns(df),
+        )
+        _CLIENT_CACHE[cache_key] = client
+        return client
+
+    if source == "fhir":
         df = load_practice_frame(
             str(context.node_config["fhir-base-url"]),
             pseudonym_salt=context.node_config.get("pseudonym-salt"),
@@ -296,6 +383,51 @@ def _dp_sgd_train(client: CKDPractice, ndarrays, cfg: dict, context: Context):
     return to_flower_arrays(w), len(client.X_train)
 
 
+def _save_model_artifact(client: CKDPractice, ndarrays, context: Context, cfg: dict) -> None:
+    """Persist the latest global model locally (spec step 6) when `model-artifact-path` is set.
+
+    Called on every train/evaluate message with the round's INCOMING (aggregated, server-sent)
+    weights, so after the final round's evaluation the practice box holds the final global model
+    — enough for patient-level risk scores without any data leaving the box. The artifact pairs
+    the weights with the practice's OWN train-fitted scaler and the feature column order: a score
+    is only meaningful under the exact preprocessing the model trained in.
+
+    NOT a medical device; the scores are for the FLIP-IT research consultation pipeline.
+    """
+    path = context.node_config.get("model-artifact-path")
+    if not path:
+        return
+    import json
+    from pathlib import Path
+
+    coef, intercept = client.model.get_parameters() if ndarrays is None else (
+        np.asarray(ndarrays[0]).ravel(), np.asarray(ndarrays[1]).ravel()[0]
+    )
+    artifact = {
+        "task": "ckd-progression",
+        "label": str(context.run_config.get("sql-label", "g3a")),
+        "landmark": {
+            "stichtag": str(context.run_config.get("sql-stichtag", "")),
+            "horizont_jahre": int(context.run_config.get("sql-horizon-years", 2)),
+            "feature_jahre": int(context.run_config.get("sql-feature-years", 5)),
+        },
+        "server_round": cfg.get("server-round", cfg.get("server_round")),
+        "num_train_examples": int(len(client.X_train)),
+        "feature_columns": list(client.feature_names or []),
+        "scaler": {
+            "mean": np.asarray(client.scaler.mean_).tolist(),
+            "scale": np.asarray(client.scaler.scale_).tolist(),
+        } if client.scaler is not None else None,
+        "coef": np.asarray(coef, dtype="float64").tolist(),
+        "intercept": float(np.asarray(intercept, dtype="float64").ravel()[0]),
+    }
+    target = Path(str(path)).expanduser()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(json.dumps(artifact, indent=2), encoding="utf-8")
+    tmp.replace(target)  # atomic: a crashed round never leaves a half-written model
+
+
 @app.train()
 def train(msg: Message, context: Context) -> Message:
     """Warm-start from the global weights, train locally, return the updated weights.
@@ -322,6 +454,10 @@ def train(msg: Message, context: Context) -> Message:
     client = build_client(context)
     ndarrays, legacy = _legacy_arrays(msg)
     cfg = _incoming_config(msg, legacy)
+
+    # Step 6 of the deployment spec: keep the latest global model on this box (no-op unless the
+    # node config names model-artifact-path).
+    _save_model_artifact(client, ndarrays, context, cfg)
 
     if cfg.get("census"):
         updated, num_examples = ndarrays, len(client.X_train)
@@ -362,6 +498,8 @@ def evaluate(msg: Message, context: Context) -> Message:
     """Score the global model on this practice's local held-out split."""
     client = build_client(context)
     ndarrays, legacy = _legacy_arrays(msg)
+    # The post-aggregation evaluate of the final round leaves the final global model on disk.
+    _save_model_artifact(client, ndarrays, context, {})
 
     metrics, num_examples = client.evaluate(ndarrays)
     reported = {

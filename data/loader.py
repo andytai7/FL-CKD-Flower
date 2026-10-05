@@ -65,6 +65,14 @@ CANONICAL_FEATURE_COLS = [
 CANONICAL_LABEL_COL = "ckd_incident"
 CANONICAL_NUM_FEATURES = len(CANONICAL_FEATURE_COLS) + 2 * len(CANONICAL_LAB_COLS)  # 16
 
+# ── Real-practice schema (CheCKD SQL) ─────────────────────────────────────
+# The deployment task: practice_1/CKD_risk_model_dataframe.sql (runtime copy data/sql/), run by
+# `data/sql_loader.load_practice_frame_sql` against the practice's own PostgreSQL export. One
+# frame carries ALL THREE thresholds; one run trains ONE of them.
+PRAXIS_ID_COLS = ["praxis", "patientid", "stichtag", "cutoff", "horizont_jahre"]
+PRAXIS_LABELS = ("label_g3a", "label_g3b", "label_g4")
+PRAXIS_DEFAULT_LABEL = "label_g3a"  # G3a = primary endpoint (notebooks/06)
+
 # ── Non-CKD track schemas (experiment/image, experiment/timeseries clinics) ──
 # A mapper-emitted frame for these tracks carries exactly <feature columns> + one of these
 # labels; `to_xy` treats every other column as a feature. Mappers emit complete numeric frames,
@@ -111,11 +119,13 @@ def load_clinic_frames(clinics_dir: str | Path | None = None) -> list[pd.DataFra
     return [load_dataframe(path) for path in files]
 
 
-def to_xy(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+def to_xy(df: pd.DataFrame, label: str | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Convert a (possibly per-practice) dataframe to model-ready (X, y) arrays.
 
-    The single preprocessing entry point for both schemas, dispatched on the label column:
+    The single preprocessing entry point, dispatched on the label column:
     - canonical (`ckd_incident`, extract_features.sql §9) — `_canonical_to_xy`
+    - real practice (`status_g3a` …, CheCKD SQL) — `_praxis_to_xy`; `label` picks the
+      trained threshold ("g3a" / "g3b" / "g4" or a full label column name)
     - non-CKD track (`melanoma` / `afib`, mapper-emitted) — every remaining column is a
       feature; frames are complete numerics, so no missingness rules apply
     - synthetic (`ckd_stage3plus`) — the rules below
@@ -126,6 +136,8 @@ def to_xy(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     """
     if CANONICAL_LABEL_COL in df.columns:
         return _canonical_to_xy(df)
+    if PRAXIS_DEFAULT_LABEL in df.columns or "status_g3a" in df.columns:
+        return _praxis_to_xy(df, label)
     for label in GENERIC_LABEL_COLS:
         if label in df.columns:
             feature_cols = [c for c in df.columns if c != label]
@@ -156,6 +168,56 @@ def to_xy(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
 
     X = pd.concat(feature_frames, axis=1).to_numpy(dtype="float32")
     y = df[LABEL_COL].to_numpy(dtype="int64")
+    return X, y
+
+
+def praxis_feature_columns(df: pd.DataFrame) -> list[str]:
+    """The model-feature columns of a CheCKD SQL frame (identity selection, kept for artifacts).
+
+    Excludes identifiers/run parameters (`praxis`, `patientid`, …) and EVERY `status_*`/`label_*`
+    column — training on the other thresholds' labels would train on the outcome (notebooks/06 §6).
+    Column order is the SQL SELECT order: identical for every practice running the same bundled
+    script, which is what FedAvg weight alignment requires.
+    """
+    excluded = set(PRAXIS_ID_COLS)
+    return [
+        c
+        for c in df.columns
+        if c not in excluded and not c.startswith(("status_", "label_"))
+    ]
+
+
+def _praxis_to_xy(df: pd.DataFrame, label: str | None) -> tuple[np.ndarray, np.ndarray]:
+    """CheCKD SQL frame -> model-ready (X, y) for ONE outcome threshold.
+
+    - Only rows with a non-NULL label train: `praevalent`/`verstorben`/`nicht_bestimmbar`/
+      `unklar` statuses are excluded by design, same as notebooks/06.
+    - No re-imputation: the SQL emits NULL-free features with clinical imputation constants and
+      paired `*_hat_messung` indicators; a NULL here is a contract breach, not a missing value.
+    - One fixed column order (the SQL's) across all practices — FedAvg needs identical shapes.
+    """
+    col = f"label_{label}" if label in ("g3a", "g3b", "g4") else (label or PRAXIS_DEFAULT_LABEL)
+    if col not in PRAXIS_LABELS:
+        raise ValueError(f"label must be one of {PRAXIS_LABELS}, got {col!r}")
+
+    trainable = df[df[col].notna()]
+    if len(trainable) < 2:
+        raise ValueError(
+            f"Fewer than 2 trainable rows for {col} (N={len(trainable)}) — "
+            "check landmark parameters / cohort inclusion for this practice."
+        )
+
+    feature_cols = praxis_feature_columns(df)
+    feature_frame = trainable[feature_cols]
+    bad = feature_frame.columns[feature_frame.isna().any()].tolist()
+    if bad:
+        raise ValueError(
+            f"Feature columns contain NULLs after the CheCKD SQL contract (should be imputed "
+            f"upstream): {bad}. Do not impute here — fix the SQL frame."
+        )
+
+    X = feature_frame.astype("float32").to_numpy()
+    y = trainable[col].to_numpy(dtype="int64")
     return X, y
 
 
