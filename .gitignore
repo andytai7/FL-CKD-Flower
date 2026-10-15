@@ -50,3 +50,27 @@ paper/*.toc
 paper/*.run.xml
 paper/*.fls
 paper/*.fdb_latexmk
+
+# ── Not published: internal project material, kept on the maintainer's machine ──────────────
+# The public repository carries code, notebooks and raw results only.
+CLAUDE.md
+docs/
+diagrams/
+paper/
+archive/
+retreat_presentation/
+practice_1/
+data/VERSIONS.md
+data/manifest_v1.sha256
+data/external/SOURCES.md
+data/clinics_*/
+.claude/
+.agents/
+.archon/
+.mcp.json
+.vscode/
+.dvc/
+.dvcignore
+scripts/README.md
+scripts/paper.sh
+scripts/paper-zip.sh
