@@ -3,7 +3,7 @@
 # First time only:  make setup
 .DEFAULT_GOAL := help
 
-.PHONY: help setup clinics baseline simulate iid notebook lab lint clean paper paper-data paper-zip
+.PHONY: help setup clinics baseline simulate iid notebook lab lint clean
 
 help:           ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -29,15 +29,6 @@ notebook:       ## Re-run the exploration notebook headless (verifies it still w
 
 lab:            ## Open the notebook interactively in your browser
 	./scripts/lab.sh
-
-paper:          ## Rebuild the expert report's figures/tables/macros from the cached run
-	./scripts/paper.sh
-
-paper-data:     ## Re-run every experiment, then rebuild the report's figures/tables/macros
-	./scripts/paper.sh --recompute
-
-paper-zip:      ## Package the expert report for upload to Overleaf
-	./scripts/paper-zip.sh
 
 lint:           ## Lint with ruff
 	./scripts/lint.sh

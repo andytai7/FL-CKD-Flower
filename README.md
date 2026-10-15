@@ -1,378 +1,205 @@
-# CKD Federated Learning — Pre-Kickoff Baseline
+# FLIP-IT — federated CKD risk models on Flower
 
-Federated **chronic-kidney-disease (CKD) risk models** across simulated GP practices, trained with
-[Flower.ai](https://flower.ai). The model travels to the data — only weights (or, for FedMosaic,
-predictions on a public cohort) are exchanged; patient rows never leave a practice.
+FLIP-IT trains chronic-kidney-disease risk models across GP practices without patient data leaving
+any practice. The model travels to the data: a practice fits the global model to its own patients,
+sends back coefficients, the server averages them, and the next global model goes out. No patient
+row, and nothing per-patient, ever crosses that boundary.
 
-This repo is the **pre-kickoff baseline sandbox** for the **FLIP-IT** project (NEXT.IN.NRW /
-EFRE-JTF NRW): it establishes reference metrics and a working federated pipeline on **synthetic**
-data before the real HL7-FHIR practice data is available. See [CLAUDE.md](CLAUDE.md) for the full
-project background and the immutable project rules.
+This repository is the project's pre-kickoff baseline: the federated pipeline, the privacy stack,
+and the numbers they produce, run on synthetic cohorts while real practice data is onboarded.
+Every model here is a logistic regression, aggregated by Flower's own strategies — FedAvg,
+FedProx and FedMosaic. That is not a starting point: logistic regression is the deployment model,
+and it is the only model class in the tree.
 
-**Every model is Flower-federatable** — the project deploys federated, so a model that can't run
-with Flower isn't a candidate ([CLAUDE.md §0](CLAUDE.md) rule 2).
+What is published here is **the code, the notebooks, and the raw results**. Internal docs,
+presentations, the paper and the practice extracts stay with the maintainers — see
+*What is not in this repository* at the end.
 
-| Architecture | Flower strategy / protocol | Role |
-|---|---|---|
-| **Logistic regression** (SGD, warm-start) | `FedAvg` / `FedProx` / `FedMosaic` | the only model class in the codebase (grant task T2.2) |
+## What the pipeline does
 
-> ⚠️ **One model, end to end (2026-08-28).** For this first deployment step the ENTIRE repository —
-> including everything bundled into the Flower App Bundle and pushed to the SuperLink
-> (`server_app.py` / `client_app.py`) — trains **only logistic regression**. No other model class
-> exists anywhere in the codebase: the MLP and XGBoost/`FedXgbBagging` paths were evaluated (below)
-> and were then **deleted**, not deprecated. FedAvg, FedProx and FedMosaic remain as aggregation
-> protocols *over logistic regression*.
+1. **Give every practice its own cohort.** `uv run ckd-clinics` generates ten non-IID practices
+   from five clinical archetypes that differ in size, age and comorbidity mix but share one true
+   risk model — so there is a global truth to learn. For a real practice, the cohort comes from
+   its own Helios FHIR server (`data/fhir_loader.py`, or the SQL-on-FHIR views in
+   `data/helios.py`), or from the bundled two-stage CheCKD SQL run against its PostgreSQL export
+   (`data/sql_loader.py`). Both reproduce the same contract as `extract_features.sql`.
 
----
+2. **Train locally, on the practice's own rows.** The SuperNode starts from the global weights the
+   server sent and fits the logistic regression on its own patients.
 
-## Results at a glance
+3. **Send model state, not data.** The reply carries coefficients and the example count that
+   weights them; the evaluating pass adds aggregate quality numbers. Nothing per-patient is ever
+   serialised.
 
-Full write-up: **[docs/REPORT.md](docs/REPORT.md)** · privacy architecture:
-**[docs/PRIVACY.md](docs/PRIVACY.md)** · deployment: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**
+4. **Average and iterate.** `server_app.py` combines the practices' updates with Flower's FedAvg
+   and broadcasts the next global model. `simulate.py` drives the same strategies in-process when
+   you do not need the Ray transport.
 
-**The answer to counsel's questions is the Technical Expert Report in [`paper/`](paper/)** — one
-section per question, built from a single pinned run (`./scripts/paper.sh`).
+5. **Report both levels, every round.** `weighted_and_worst` logs the sample-weighted **global**
+   AUROC and sensitivity *and* the **worst single practice** — a model that collapses on one
+   outlier practice cannot hide behind a strong average.
 
-The reproducible experiment, with charts, is
-[`notebooks/01_explore_and_baselines.ipynb`](notebooks/01_explore_and_baselines.ipynb).
+6. **Protect the run when real patients are in it.** Record-level DP-SGD inside each practice,
+   SecAgg+ masking on the wire, and a rule-based server agent that gives every clinic its own
+   (batch, σ) so heterogeneous clinics compose to the same ε. All of it is off by default;
+   the baselines are meant to be clean reference numbers.
 
-10 non-IID practices, 3,276 patients, 20 rounds, **5 seeds** (mean ± s.d.).
+7. **Keep the model, drop everything else.** `uv run ckd-export-model` writes the finished
+   federated model — feature order, scaler, coefficients — to `models/global_model.json`, which
+   `uv run ckd-web` serves as a local physician form. On the `sql` path the practice's temporary
+   tables are dropped when the run ends.
 
-| | AUROC | Worst practice | Uplink bits/round |
+## What we measured
+
+Ten practices, 3,276 patients, 20 rounds, five seeds (mean ± s.d.). Raw JSON in [`results/`](results/).
+
+| | AUROC | Worst practice | Uplink per practice per round |
 |---|---|---|---|
-| *centralized ceiling* | *0.861* | *n/a* | *n/a* |
-| **FedProx** | **0.808 ± 0.008** | **0.675 ± 0.054** | 352 |
-| **FedMosaic** | 0.800 ± 0.010 | 0.661 ± 0.068 | 3,600 |
-| *fedavg* (baseline) | *0.808 ± 0.008* | *0.675 ± 0.054* | *352* |
-| *local* (baseline) | *0.789 ± 0.008* | *0.495 ± 0.126* | *0* |
+| *pooled ceiling* (non-federated) | 0.853 ± 0.011 | *n/a* | *n/a* |
+| **FedProx** | 0.808 ± 0.009 | 0.675 ± 0.061 | 352 bits |
+| *FedAvg* (baseline) | 0.808 ± 0.009 | 0.675 ± 0.061 | 352 bits |
+| **FedMosaic** | 0.800 ± 0.011 | 0.661 ± 0.076 | 3,600 bits |
+| *local* (no collaboration) | 0.789 ± 0.009 | 0.495 ± 0.141 | 0 |
 
-Four things worth knowing before you read further:
+- Federation lands within **0.045** of the pooled ceiling, with no practice sharing a patient row.
+- **The win is equity, not average accuracy.** Training alone and the best protocol differ by 0.019
+  in global AUROC, and by **0.180** on the worst practice.
+- **More rounds do not help.** The logistic protocols converge by round 10 and are flat after, so
+  extra rounds only spend privacy budget.
+- **The privacy standard costs nothing measurable here.** DP-SGD + SecAgg + orchestration holds
+  AUROC 0.797–0.798 at composed ε 0.5–8 over five seeds ([notebook 03](notebooks/03_dpsgd_secagg_standard.ipynb)).
+  Update-level local DP at a comparable budget does *not*: the worst practice falls to 0.397, below
+  the 0.495 it gets by not collaborating at all ([notebook 02](notebooks/02_differential_privacy_epsilon.ipynb)).
+- **The leakage audit passes.** Membership-inference attack AUC 0.501 ± 0.006 in the no-DP runs,
+  with a positive control at 0.655 proving the attack works. Model inversion and reconstruction are
+  not implemented — the gap is named in `results/audit.json`.
 
-- **Federation lands within 0.054 of the pooled ceiling** without any practice sharing a patient row.
-- **The win is equity, not average accuracy.** Global AUROC separates training-alone from the best
-  protocol by 0.019; the *worst practice* separates them by **+0.180**.
-- **More rounds do not help.** The logistic protocols converge by round 10 and are flat
-  thereafter, so every extra round only spends privacy budget.
-- *Historical note (2026-08-28):* an sklearn **MLP** and gradient-boosted trees
-  (**XGBoost**/`FedXgbBagging`) were evaluated and **removed from scope**. The trees federated
-  poorly — 0.729 federated against a 0.861 pooled ceiling, degrading from 0.780 at round 5 to
-  0.686 at round 50, at 61× the bandwidth — and cannot be SecAgg-protected, so logistic regression
-  is now the only model in the repo.
-- **Differential privacy has a deployment standard**: patient-level DP-SGD inside each clinic,
-  SecAgg+ masking on the wire, and a rule-based server agent ([`dpsgd.py`](dpsgd.py) +
-  [`orchestrator.py`](orchestrator.py)) — deterministic census → ε-policy → per-clinic accountant
-  inversion → ConfigRecord dispatch; no LLM — that standardises the composed ε across clinic sizes.
-  Measured in [`notebooks/03_dpsgd_secagg_standard.ipynb`](notebooks/03_dpsgd_secagg_standard.ipynb):
-  AUROC 0.797–0.798 holds at composed ε 0.5–8 over 5 seeds. Central and local DP remain as measured
-  comparison baselines in `privacy.py` / notebook 02.
+## Install and run
 
-## Quick start
-
-Requires [`uv`](https://docs.astral.sh/uv/). No manual venv activation needed.
+Requires [`uv`](https://docs.astral.sh/uv/); no manual venv activation.
 
 ```bash
-make setup          # create/repair the venv + install all dependencies
-make clinics        # generate the per-clinic datasets (needed by everything below)
-make baseline       # centralized pooled-data ceiling
-make simulate       # federated simulation: logistic regression, non-IID
-make help           # list every target
+make setup      # create/repair the venv and install everything
+make clinics    # generate the per-clinic cohorts (everything below needs them)
+make baseline   # pooled-data ceiling on the same cohorts
+make simulate   # federated logistic regression, non-IID
+make help       # every target
 ```
 
-No `make`? The same commands are shell scripts in [`scripts/`](scripts/) — run them from anywhere,
-each `cd`s to the repo root first:
+The same commands as `uv` directly, plus the rest of the surface:
 
 ```bash
-./scripts/setup.sh && ./scripts/clinics.sh && ./scripts/simulate.sh --clinics
+uv run ckd-simulate --clinics                        # FedAvg, in-process
+uv run ckd-simulate --clinics --protocol fedmosaic   # the personalized protocol
+uv run ckd-baseline --clinics                        # ceiling — match the data source!
+uv run ckd-benchmark --rounds 20                     # full protocol benchmark -> results/
+uv run ckd-privacy --seeds 42 43 44 45 46            # DP sweeps + SecAgg probe
+uv run ckd-audit   --seeds 42 43 44 45 46            # membership-inference audit
+
+uv run flwr run .                                    # full Flower stack (Ray, real ServerApp/ClientApp)
+uv run flwr run . --run-config "dpsgd-epsilon=8.0 alpha=5.0 secure-aggregation=true"
 ```
 
-Under the hood every target is a `uv` command:
+> Comparing a federated run against the ceiling? Pass `--clinics` to both. `ckd-baseline` defaults
+> to the flat placeholder CSV, whose ceiling is AUROC ≈ 0.5 by construction — the difference is the
+> dataset, not the privacy.
 
-```bash
-uv sync --extra dev --extra notebook
+## Privacy
 
-uv run ckd-clinics --clinics 10             # per-clinic datasets -> data/clinics/
+DP and Secure Aggregation are **off by default** and enabled per run. The mechanism is chosen by
+run-config key, never by an environment variable, so it survives the SuperNode process boundary:
 
-uv run ckd-simulate --clinics               # logreg via FedAvg, non-IID
-uv run ckd-simulate --clinics --protocol fedmosaic
-uv run ckd-simulate --help                  # all flags
+| Key | Effect |
+|---|---|
+| `dpsgd-epsilon` | The standard: per-record DP-SGD in each practice + a server-side census and ε-orchestrator that plans each clinic's (batch, σ). Composes with `secure-aggregation` |
+| `secure-aggregation` | SecAgg+: the server opens only the sum, never one practice's update |
+| `central-dp-epsilon` | Noise during aggregation; protects the released model, not the wire |
+| `local-dp-epsilon` | Noise inside the SuperNode before transmission; expensive at this cohort size |
+| `min-cohort-size`, `metric-privacy` | Suppress small cohorts and identify no practice in the logs |
 
-uv run ckd-baseline --clinics               # pooled ceiling on the SAME data
-uv run ckd-benchmark --rounds 20            # full protocol benchmark -> results/
-uv run ckd-privacy --seeds 42 43 44 45 46   # central + local DP comparison baselines, SecAgg probe -> results/
-uv run ckd-audit   --seeds 42 43 44 45 46   # membership-inference leakage audit -> results/
+ε is never derived by hand: `dp.py` holds the single RDP accountant (`epsilon_rdp`,
+`sigma_for_epsilon`), and the sweeps, the audit and the live server all invert the same one. Only a
+**composed** budget over the configured rounds is ever quoted.
 
-uv run flwr run . --run-config "secure-aggregation=true"   # SecAgg+: server sees only the sum
-uv run flwr run . --run-config "local-dp-epsilon=5.0"      # noise inside the SuperNode
-uv run flwr run . --run-config "min-train-examples=50"     # exclude practices smaller than 50 patients
-uv run flwr run . --run-config "central-dp-epsilon=8"       # server derives the noise to meet the budget
+## Notebooks
 
-./scripts/paper.sh --recompute              # rebuild the expert report's figures/tables/numbers
+Each one runs top to bottom and is the audit trail for its numbers.
 
-uv run flwr run .                           # full Flower stack (Ray engine, real ServerApp/ClientApp)
-```
+| | |
+|---|---|
+| [01](notebooks/01_explore_and_baselines.ipynb) | The federation itself: protocols, convergence, the centralized gap |
+| [02](notebooks/02_differential_privacy_epsilon.ipynb) | DP accounting in detail, and what update-level local DP costs |
+| [03](notebooks/03_dpsgd_secagg_standard.ipynb) | The deployment standard, built and measured: DP-SGD + SecAgg + orchestrator |
+| [04](notebooks/04_external_ckd_data.ipynb) | NHANES, UCI CKD and Synthea pushed through the identical pipeline |
+| [04-b](notebooks/04_helios_sql_federated_fedprox.ipynb) | Helios SQL-on-FHIR as the cohort source, then FedProx over plain weights |
+| [05](notebooks/05_harder_synthetic_epsilon.ipynb) | Harder synthetic data, where the ε-response finally becomes visible |
+| [06](notebooks/06_real_practice_ckd_progression.ipynb) | Real practice d001: CKD progression on 1/2/5-year horizons |
+| [07](notebooks/07_landmark_time_progression_d001.ipynb) | Same practice, six yearly landmarks: does AUPRC improve over time? |
 
-> ⚠️ **Match the data source when comparing.** `ckd-baseline` defaults to the flat placeholder CSV.
-> If the federated side used `--clinics`, the ceiling must too — otherwise the "price of privacy"
-> you compute is just a dataset difference.
-
----
-
-## The datasets
-
-**V1 is frozen.** `data/synthetic_ckd_data.csv`, `data/clinics/`, `data/clinics_ladder/` (and their
-generators) never change — verified by `sha256sum -c data/manifest_v1.sha256`. Everything added
-since is a separate directory on top; see [data/VERSIONS.md](data/VERSIONS.md).
-
-| Dataset | What it is | Expected result |
-|---|---|---|
-| `data/synthetic_ckd_data.csv` (V1) | 2000-row **wiring placeholder**; max \|feature-label correlation\| **0.031** | **AUROC ≈ 0.5 is CORRECT** — use as a negative control |
-| `data/clinics/*.csv` (V1) | Per-clinic, non-IID, sharing one true risk model (`uv run ckd-clinics`). Easy by construction: pooled logreg == Bayes optimum (0.851), so ε-sweeps look flat | ≈ 0.80 federated, 0.86 pooled |
-| `data/clinics_v2_*/` (V2) | 8 hardness-calibrated suites from `data/synthesize_v2.py` (`uv run python -m data.synthesize_v2 --suites all`): same V1 schema, prevalence 0.13, information-destruction knobs (risk noise, label noise, frailty, interactions, concept shift, undercoding, imbalance) | V2-main: logreg ceiling 0.813 vs Bayes 0.865; ε-response becomes visible ([notebook 05](notebooks/05_harder_synthetic_epsilon.ipynb)) |
-| `data/clinics_{nhanes,nhanes_s,uci,synthea}/` | Real-data cohorts mapped into the V1 schema by the `data/external/*_to_clinics.py` mappers (NHANES 2011–2018 cycle×sex; UCI CKD 400; Synthea 10k counties) | run through every CLI and notebook unchanged |
-
-The placeholder has no learnable signal by design. Every protocol scoring ≈ 0.5 on it is the
-evidence that the ≈ 0.80 numbers on the clinics data are real, not an artefact of the harness.
-
-Raw downloads (NHANES XPT, Synthea zips/FHIR, UCI CKD) are **not committed** — URLs + checksums in
-[data/external/SOURCES.md](data/external/SOURCES.md); the mappers regenerate the clinic dirs.
-
----
-
-## How the federation runs
-
-```text
-[Practice 1]  ─┐
-[Practice 2]  ─┤   local train (warm-start)        ┌─► global AUROC + sensitivity
-   …           ├──────────────────────────────────►┤
-[Practice 10] ─┘   weights only ─► strategy ─► global └─► worst-practice AUROC + sensitivity
-```
-
-Each round logs **dual-level metrics** ([CLAUDE.md §5](CLAUDE.md)): the sample-weighted **global**
-mean *and* the **worst single practice**, so a model that collapses on one outlier practice can't
-hide behind a strong aggregate.
-
-Two execution modes:
-
-- **`uv run flwr run .`** — the full Ray simulation engine with the real `ServerApp`/`ClientApp`.
-  Use it for end-to-end checks and as the rehearsal for deployment.
-- **`uv run ckd-simulate`** — an in-process runner that drives Flower's **real strategies**
-  (`aggregate_train` / `aggregate_evaluate` on real `Message` objects) without the Ray transport.
-  Faster, and returns per-round history for benchmarking.
-
----
+Notebooks 06 and 07 read the practice extracts under `practice_1/`, which are not published here —
+they run only on a machine that holds them. Everything else regenerates locally.
 
 ## Repository layout
 
-| Path | Purpose |
-|---|---|
-| `client_app.py` / `server_app.py` | Flower `ClientApp` / `ServerApp` on the 1.33 Message API |
-| `simulate.py` | In-process runner over Flower's real strategies → `ckd-simulate` |
-| `benchmark.py` | Protocol benchmark → `ckd-benchmark` → `results/benchmark.json` |
-| `privacy.py` | Central + local DP sweeps (comparison baselines to the DP-SGD standard), RDP accountant, SecAgg+ probe → `ckd-privacy` |
-| `audit.py` | Membership-inference leakage audit (T2.5 / layer L6) → `ckd-audit` |
-| `dpsgd.py` | Patient-level DP-SGD (Poisson sampling, per-sample clipping, Gaussian noise) + in-process runner emulating SecAgg masked-sum over Flower's real FedAvg |
-| `orchestrator.py` | Rule-based server agent (no LLM): deterministic census → ε-policy → accountant inversion → ConfigRecord dispatch; per-clinic (batch, σ) plans so every clinic composes to the same target ε; `DpsgdOrchestrator(FedAvg)` |
-| `paper/` | The Technical Expert Report (LaTeX). `make_paper.py` generates every figure, table and inline number from one run |
-| `centralized.py` | Pooled-data ceilings → `ckd-baseline` |
-| `messages.py` | The Flower `Message` shapes the in-process runners exchange |
-| `task.py` | Local scaler, imbalanced-data metrics, T2.5 fairness metrics |
-| `data/` | Loading + missingness rules (`loader.py`), Dirichlet partitioning (`partition.py`), V1 clinic generator (`synthesize.py`), FHIR loader (`fhir_loader.py`), V2 hardness generator (`synthesize_v2.py`), external-data mappers + provenance (`external/`), dataset versioning (`VERSIONS.md`, `manifest_v1.sha256`) — plus the datasets |
-| `models/` | `logreg` — the only model class (FedAvg/FedProx/FedMosaic all train it) |
-| `models/protocols/` | The protocol benchmark, incl. `fedmosaic.py` (a Flower `Strategy` subclass) |
-| `model_artifact.py` | Export the federated global model as JSON (`ckd-export-model` → `models/global_model.json`) + the `Scorer` that scores one patient from it |
-| `webapp.py` | Local physician demo: patient-details form → federated model's risk score (`ckd-web`, stdlib-only, no data stored) |
-| `extract_features.sql` | Canonical feature contract for the **real** Tomedo→PostgreSQL export |
-| `docs/` | `REPORT.md`, `PRIVACY.md`, `DEPLOYMENT.md`, the legal questions (`Law_Questions.docx`) + source PDFs |
-| `notebooks/` | Interactive federation walkthrough: 01 explorations/baselines, 02 update-level DP sweeps, 03 the DP-SGD + SecAgg + orchestrator standard measured live, 04 external real data through the same pipeline (+ first fairness-by-sex run), 05 V2-vs-V1 ε-response with acceptance gates |
-| `diagrams/` | `Flipit-privacy.xml` (drawio source) + `Flipit-privacy.png` (export): the deployment standard — rule-based server agent (census → ε-policy → accountant → ConfigRecord dispatch), SecAgg+ masking at the SuperLink, local DP-SGD per clinic | + `Flipit-process.xml` / `Flipit-process.png`: the end-to-end pipeline for clinicians (onboarding → in-practice Tomedo/FHIR data → round-zero census → federated rounds → governance gate → risk score at the point of care) — regenerated by `make_process_diagram.py` |
-
----
-
-## Features (synthetic baseline schema)
-
-| Feature | Type | Description |
-|---|---|---|
-| `age_years` | continuous | age at the index date |
-| `dx_hypertonie` | binary | ICD I10 |
-| `dx_diabetes` | binary | ICD E10/E11/E13 |
-| `dx_khk` | binary | ICD I25 |
-| `dx_adipositas` | binary | ICD E66 |
-| `dx_herzinsuffizienz` | binary | ICD I50/I11.0 |
-| `dx_hyperurikaemie` | binary | ICD M10 |
-| `years_since_{hypertonie,diabetes,khk}_dx` | continuous | years since first diagnosis (0 if absent) |
-
-**Label** `ckd_stage3plus = 1` for CKD stage ≥ 3. **Missingness:** `dx_*` flags are structural zeros
-(absent = not documented, no imputation); `years_since_*` encode absence as 0. Continuous labs
-(eGFR/HbA1c, real data only) get median imputation **plus** a binary missing-indicator.
-
-> ⚠️ **This is not the real schema.** [`extract_features.sql`](extract_features.sql) defines the
-> canonical contract, and it differs in both columns and *task*: German column names, plus eGFR,
-> HbA1c and sex, and an **incidence** label (`ckd_incident` within `[t0, t0+365d)` among patients
-> with no prior CKD) rather than prevalence. Migrating is a re-specification, not a rename —
-> see [CLAUDE.md §3b](CLAUDE.md).
-
----
-
-## Physician demo webapp (local, synthetic)
-
-The smallest end-to-end cut of the "superlink pushes the model, practice serves it" story: export
-the federated global model once, then serve a local form where a physician enters patient features
-and gets the model's P(CKD stage ≥ 3). Stdlib-only, 127.0.0.1 by default, and the form collects
-**no identifiers** — inputs are scored and discarded.
-
-```bash
-uv run ckd-export-model     # 10 rounds of Flower FedAvg over data/clinics -> models/global_model.json
-uv run ckd-web --port 9000  # http://127.0.0.1:9000  (8080 is the Helios FHIR server's)
+```text
+.
+├── client_app.py, server_app.py     Flower ClientApp / ServerApp (1.33 Message API)
+├── simulate.py                      in-process runner over Flower's real strategies
+├── benchmark.py                     protocol benchmark -> results/
+├── privacy.py                       central / local DP sweeps + SecAgg probe
+├── dpsgd.py                         record-level DP-SGD + the SecAgg-masked runner
+├── orchestrator.py                  the rule-based server agent + DpsgdOrchestrator(FedAvg)
+├── dp.py                            the single (ε, δ) accountant
+├── audit.py                         membership-inference audit
+├── equity.py, phasemap.py           ε-pricing and census-spread sweeps
+├── centralized.py                   pooled-data ceiling (non-federated reference)
+├── model_artifact.py                export the federated model -> models/global_model.json
+├── webapp.py                        local physician demo (stdlib only, stores nothing)
+├── task.py, messages.py             metrics + fairness gaps; the Message shapes
+├── extract_features.sql             canonical feature contract for a real export
+├── models/                          logreg — the only model — plus protocols/ (FedMosaic)
+├── data/                            loaders, generators, the Helios host, the CheCKD SQL
+├── notebooks/                       the walkthrough, 01–07
+├── results/                         raw JSON from the runs quoted above
+└── scripts/, Makefile               thin wrappers around the uv commands
 ```
 
-Model and scaler come from the exported artifact (sandbox reference scaler on the pooled synthetic
-cohort — a deployment would pair the model with the practice-local scaler). ⚠️ Demo on synthetic
-data — not a medical device, not for clinical decisions.
-Full doc: [docs/WEBAPP.md](docs/WEBAPP.md) (interface, proxying into the Kubeflow pod, screenshots).
-
----
-
-## Helios FHIR server (SQL on FHIR)
-
-The consortium FHIR server is **Helios FHIR** (`HeliosSoftware/hfs`) — *SQL on FHIR*. Since
-2026-09-11 the repo builds **only from Helios** (CLAUDE.md §0.9): every practice's cohort is read
-from its own Helios server by `data/fhir_loader.py` (FHIR R4 searches) or by the SQL-on-FHIR
-ViewDefinitions in `data/helios.py` (run by Helios' `pysof` engine), both reproducing the identical
-[`extract_features.sql`](extract_features.sql) contract.
-
-The sandbox hosts a local Helios instance seeded with the committed synthetic cohort:
-
-```bash
-uv run ckd-helios            # download binary -> serve on 127.0.0.1:8080 -> seed synthetic data
-uv run ckd-helios extract    # run the canonical landmark extraction against it (round-trip proof)
-uv run ckd-helios sql        # run the SQL-on-FHIR ViewDefinitions -> data/helios/out/
-```
-
-Seeding is deterministic (CLAUDE.md rule 6): the fields the synthetic CSV carries — age,
-comorbidity flags, and the `ckd_stage3plus` label — are preserved verbatim; the canonical-only
-fields (sex, eGFR/HbA1c, encounter dates) are synthesised from a fixed seed so the contract
-round-trips exactly.
-
-## Deploying
+## Deployment
 
 SuperLink on central infrastructure, one SuperNode per practice, TLS and key-based node
-authentication throughout. The short version of the run is below; certificate generation, flag
-details, troubleshooting, and the per-practice go-live checklist are in the full runbook,
-**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+authentication throughout. The SuperLink address and CA live in `~/.flwr/config.toml`; the
+practice-local settings (its SQL DSN, its model path, its Helios FHIR base URL) live in the
+SuperNode's own secrets file, and the private key never leaves the machine.
 
-### What a deployment needs
+```bash
+flwr supernode register praxis_01.pub flipit-prod     # admin, once per practice
+flwr run . flipit-prod --stream \
+  --run-config "num-practices=25 num-server-rounds=10 data-source='sql' dpsgd-epsilon=3.0 secure-aggregation=true"
+```
 
-Already in this repo (verified): the app itself — `uv run flwr run .` passes an end-to-end local
-simulation with 0 failures — plus all dependencies, pinned to flwr 1.33. Supplied per deployment
-and **not** committed anywhere:
+`num-practices` must equal the number of connected SuperNodes or the run never starts.
 
-| Needed | Where it comes from |
-|---|---|
-| SuperLink Control API address (`host:9093`) | whoever runs the central host |
-| `ca.crt` of the deployment CA | the SuperLink admin (server cert/key too, if you host it) |
-| One P-384 key pair per practice, public half registered | generated on each practice machine; registered centrally with `flwr supernode register` |
-| `fhir-base-url` per practice | the practice's own **Helios FHIR server** (sandbox: `uv run ckd-helios`) — only for `data-source=fhir` |
+## Development
 
-### Run order
+`uv` only — `uv add` for dependencies, `uv run` for everything else. `make lint` runs ruff.
 
-1. **Central host** starts the SuperLink (TLS + key-based node auth):
+There is no test suite: it was removed rather than left broken, and the closest thing to one is the
+determinism gate (one global seed, derived per-practice seeds, identical splits and features across
+every model in a comparison — only the thing under test varies). Negative results are reported as
+findings, not hidden: FedProx ≈ FedAvg here, and local training is nearly as good on average.
 
-   ```bash
-   flower-superlink \
-     --ssl-ca-certfile ca.crt --ssl-certfile server.crt --ssl-keyfile server.key \
-     --enable-supernode-auth \
-     --fleet-api-address 0.0.0.0:9092 --control-api-address 0.0.0.0:9093 \
-     --database /var/lib/flower/flipit.db
-   ```
+Branch topology: `main` is frozen infrastructure, `dev` integrates, and every `experiment/` branch
+names a data kind — tabular, image, time-series — never a methodology.
 
-2. **Admin** registers each practice's public key (the `.pub` files collected from practices):
+## What is not in this repository
 
-   ```bash
-   flwr supernode register praxis_01.pub flipit-prod
-   ```
-
-3. **Each practice** generates its key pair once and starts its SuperNode — the private key never
-   leaves the machine:
-
-   ```bash
-   openssl ecparam -name secp384r1 -genkey -noout -out praxis_01.key
-   openssl ec -in praxis_01.key -pubout -out praxis_01.pub   # send only the .pub to the admin
-
-   flower-supernode \
-     --superlink superlink.example.org:9092 \
-     --root-certificates ca.crt \
-     --auth-supernode-private-key praxis_01.key --auth-supernode-public-key praxis_01.pub \
-     --node-config "partition-id=0 num-partitions=25 fhir-base-url='http://127.0.0.1:8080'"
-   ```
-
-4. **Operator** points the CLI at the federation and starts the run. `flwr run` builds the app
-   bundle from `pyproject.toml` and ships it — nothing is copied by hand:
-
-   ```toml
-   # ~/.flwr/config.toml — note the CONTROL API port (9093), not the Fleet port
-   [superlink.flipit-prod]
-   address = "superlink.example.org:9093"
-   root-certificates = "/path/to/ca.crt"
-   insecure = false
-   ```
-
-   ```bash
-   # first: delete the pre-seeded [superlink.supergrid] entry (Flower Labs' endpoint)
-   # from ~/.flwr/config.toml and pin `default` to the consortium SuperLink
-   flwr run . flipit-prod --stream \
-     --run-config "num-server-rounds=10 num-practices=25 data-source='fhir' dpsgd-epsilon=3.0 secure-aggregation=true"
-   ```
-
-`num-practices` must equal the number of connected SuperNodes or the run never starts. A two-node,
-no-TLS rehearsal on one machine — do this before touching a practice — is in
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#local-rehearsal--do-this-before-touching-a-practice).
-
-Each SuperNode can read its cohort from the practice's own **Helios FHIR server**
-(`data-source=fhir`) instead of a CSV; the mapping lives in `data/fhir_loader.py` (or the
-SQL-on-FHIR ViewDefinitions in `data/helios.py`) and emits the **canonical
-`extract_features.sql` contract** — labs, `geschlecht`, and the incidence label — de-identified
-at the source: no identifier is ever read, rows are keyed positionally in a hash order, and an
-optional per-practice `pseudonym-salt` (`--node-config`) enables the salted-HMAC join key named in
-[PRIVACY.md](docs/PRIVACY.md) §2. `to_xy` dispatches on the schema, so models and the client
-builder consume either path unchanged (CLAUDE.md §3b: the two schemas are different prediction
-tasks). Rehearse an extraction on the practice box with
-`uv run ckd-fhir-extract http://127.0.0.1:8080` (sandbox: `uv run ckd-helios extract`).
-
----
-
-## Branches
-
-Gitflow with a hard topology rule: **`main` is the frozen infrastructure, `dev` is the
-integration branch, and every remaining branch names a data kind — never a methodology.**
-Methodologies are **categorized for their data kind and committed on the matching data
-branch**, not pooled on `dev`: each data branch's `research/` tree holds the privacy/FL
-protocols adapted to its modality (model class + the privacy model right for that space), so
-cross-method comparison within a modality is one table on one branch and cross-modality
-comparison is reading the branches side by side.
-
-| Branch | Role | Rule |
-|---|---|---|
-| `main` | Frozen infrastructure: Flower app, runners, the V1 data contract, published baselines | Changed only by reviewed merges from `dev` |
-| `dev` | Integration branch: finalized shared plumbing lands here first | **No methodology code** — methods are categorized per data branch; merge to `main` at milestones |
-| `experiment/tabular` | Tabular CKD federation: V1 clinics (frozen contract), the 8 V2 hardness suites as a run matrix, NHANES / UCI / Synthea mapped cohorts | Tabular privacy grid (the L0–L6 standard + V2 audits); merges back via `dev` |
-| `experiment/image` | Dermoscopy image track — MedMNIST DermaMNIST. Its DL × privacy benchmark at `research/privacy-dl-image/`: **FedAvg transport, CNN model arms, per-image record-level DP-SGD** + FedCT / SecAgg+ / verified-hybrid arms; MIA a first-class metric | DL code research-tree only (dated track-local rule-2 waiver, see its CLAUDE.md §0a) |
-| `experiment/timeseries` | Single-lead ECG track — PhysioNet CinC 2017. Its DL × privacy benchmark at `research/privacy-dl-ts/`: **RNN arms (LSTM/GRU), user-level trajectory DP with RDP accounting** + event-level contrast; FedCT / SecAgg+ / verified-hybrid arms | DL code research-tree only (dated track-local rule-2 waiver) |
-| `experiment/privacy-protocol` | Legacy privacy-protocol lab bench (T2.3 → MS4); stays stale at the frozen commit until protocol work resumes | Finalize there, then merge back |
-
-Rules of the road:
-
-1. **Dataset payloads are never committed.** Raw downloads and generated clinic CSVs are
-   gitignored; regenerate synthetic suites via the CLIs, re-download externals via the URLs and
-   checksums in [`data/external/SOURCES.md`](data/external/SOURCES.md). A branch carries code,
-   config, and provenance — never data.
-2. **One `experiment/` branch per data kind, not per dataset folder and not per method.** The
-   eight V2 suites are a run matrix inside `experiment/tabular`; methodology variants are
-   benchmark *arms* inside the owning data branch's matrix, never branches. A comparison that
-   needs a branch to exist is a failure of the harness, not a reason to fork topology.
-3. New federation logic stays a Flower `Strategy` subclass over the permitted model class
-   ([CLAUDE.md](CLAUDE.md) rules 1–2). Deployable paths (`server_app.py`, `client_app.py`) stay
-   logreg-only; DL benchmark models live in the owning data branch's `research/` tree behind the
-   optional `dl` uv dependency and are never wired into the Flower App Bundle.
-4. Anything that changes the privacy machinery itself (`dpsgd.py`, `orchestrator.py`,
-   `privacy.py`, run-config privacy keys, notebooks 02/03) lands on `dev` first and is reviewed
-   into `main` at milestones.
+- **Internal docs** — the project memory, the privacy architecture, the deployment runbook, the
+  report. Some module docstrings still cite their sections (`CLAUDE.md §…`, `docs/PRIVACY.md`).
+- **Presentations, decks, the paper** and their build products.
+- **Datasets.** The per-practice cohorts are generated by the committed generators and never
+  committed; the external cohorts are rebuilt from their public sources by the mappers in
+  `data/external/`. The one exception is the 46 KB flat synthetic fixture,
+  `data/synthetic_ckd_data.csv` — a signal-less wiring placeholder (AUROC ≈ 0.5 is the correct
+  answer on it) that the loaders and the Helios seeder need; it carries no real patient data.
+- **Practice extracts.** Real practice data lives with the practice. Notebooks 06 and 07 are the
+  only artefacts that assume its presence.

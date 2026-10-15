@@ -1,64 +1,63 @@
-# Python / uv
+# ── Environments, caches, tooling ───────────────────────────────────────────────────────────
 .venv/
 __pycache__/
 *.pyc
 *.pyo
 .ruff_cache/
 .pytest_cache/
+logs/
+.DS_Store
+.ipynb_checkpoints/
+~$*
 
-# Generated per-clinic datasets — regenerate with `uv run ckd-clinics`, never committed.
-data/clinics/
-data/clinics_ladder/
-# Raw external payloads (NHANES XPTs, Synthea zips/FHIR bundles, UCI CKD, DermaMNIST npz,
-# CinC 2017 ECG) — re-download via the URLs + checksums in data/external/SOURCES.md, then
-# re-run the data/external/*_to_clinics.py mappers. Only the mappers and SOURCES.md are tracked.
-data/external/nhanes/
-data/external/synthea/
-data/external/uci_ckd/
-data/external/dermamnist/
-data/external/ecg_cinc2017/
-# Flower App Bundles produced by `flwr build` / `flwr run`.
-*.fab
-# Deployment secrets/keys (created by docs/DEPLOYMENT.md's openssl steps) and run-time artifacts —
-# none must ever be committed. Ad-hoc patient extracts land under data/** (any CSV except the
-# committed synthetic fixture).
+# ── Secrets and run-time artefacts: never committed ─────────────────────────────────────────
+# Deployment keys (openssl), Flower app bundles, local SuperLink state.
 *.key
 *.crt
 *.csr
 *.srl
 *.pem
 .env*
+*.fab
 .flwr/
+
+# ── Datasets: generated, not published ──────────────────────────────────────────────────────
+# Build the cohorts locally instead: `uv run ckd-clinics`, the V2 suites via
+# `uv run python -m data.synthesize_v2 --suites all`, the external cohorts via the
+# data/external/*_to_clinics.py mappers over their public sources.
 data/**/*.csv
 !data/synthetic_ckd_data.csv
-
+data/clinics/
+data/clinics_ladder/
+data/clinics_*/
+data/external/nhanes/
+data/external/synthea/
+data/external/uci_ckd/
+data/external/dermamnist/
+data/external/ecg_cinc2017/
 # Helios FHIR server runtime: downloaded HFS binary, SQLite store, generated seed, view outputs.
 data/helios/
 
-# OS
-.DS_Store
-
-results/
-
-# LaTeX build products from a local compile. The *inputs* the report needs — paper/figures/,
-# paper/tables/, paper/generated/ — ARE committed, deliberately: an Overleaf upload must build
-# without running Python, and the committed artefacts are the audit trail for the numbers in the
-# report. Regenerate them with `./scripts/paper.sh --recompute`.
-paper/*.pdf
-paper/*.aux
-paper/*.bbl
-paper/*.bcf
-paper/*.blg
-paper/*.log
-paper/*.out
-paper/*.toc
-paper/*.run.xml
-paper/*.fls
-paper/*.fdb_latexmk
-
-# AI layer audit log
-logs/
-
-# Jupyter checkpoints + Office owner-lock files (transient, regenerable)
-.ipynb_checkpoints/
-~$*
+# ── Not published: internal project material, kept on the maintainer's machine ──────────────
+# The public repository carries code, notebooks and raw results only.
+CLAUDE.md
+docs/
+diagrams/
+paper/
+archive/
+retreat_presentation/
+practice_1/
+data/VERSIONS.md
+data/manifest_v1.sha256
+data/external/SOURCES.md
+.claude/
+.agents/
+.archon/
+.mcp.json
+.vscode/
+.dvc/
+.dvcignore
+# Paper/report tooling and the scripts index (they describe unpublished material).
+scripts/paper.sh
+scripts/paper-zip.sh
+scripts/README.md
