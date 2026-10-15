@@ -125,7 +125,7 @@ run-config key, never by an environment variable, so it survives the SuperNode p
 
 Each one runs top to bottom and is the audit trail for its numbers.
 
-| | |
+| Notebook | What it shows |
 |---|---|
 | [01](notebooks/01_explore_and_baselines.ipynb) | The federation itself: protocols, convergence, the centralized gap |
 | [02](notebooks/02_differential_privacy_epsilon.ipynb) | DP accounting in detail, and what update-level local DP costs |
